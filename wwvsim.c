@@ -1,4 +1,4 @@
-// $Id: wwvsim.c,v 1.5 2018/03/12 17:12:37 karn Exp karn $
+// $Id: wwvsim.c,v 1.6 2018/09/10 05:45:37 karn Exp karn $
 // WWV/WWVH simulator program. Generates their audio program as closely as possible
 // Even supports UT1 offsets and leap second insertion
 // Uses espeak synthesizer for speech announcements; needs a lot of work
@@ -86,17 +86,17 @@ int announce(int startms,char const *message,int female){
     return -1;
   fputs(message,fp);
   fclose(fp);
-#ifdef __linux__
-  if(female){
-    system("espeak -v en-us+f3 -a 70 -f /tmp/speakin --stdout | sox -t wav - -t raw -r 48000 -c 1 -e signed-integer -b 16 /tmp/speakout");
-  } else {
-    system("espeak -v en-us -a 70 -f /tmp/speakin --stdout | sox -t wav - -t raw -r 48000 -c 1 -e signed-integer -b 16 /tmp/speakout");
-  }
-#else // apple
+#ifdef __APPLE__
   if(female){
     system("say -v Samantha --output-file=/tmp/speakout.wav --data-format=LEI16@48000 -f /tmp/speakin;sox /tmp/speakout.wav -t raw -r 48000 -c 1 -b 16 -e signed-integer /tmp/speakout");
   } else {
     system("say -v Alex --output-file=/tmp/speakout.wav --data-format=LEI16@48000 -f /tmp/speakin;sox /tmp/speakout.wav -t raw -r 48000 -c 1 -b 16 -e signed-integer /tmp/speakout");
+  }
+#else // linux
+  if(female){
+    system("espeak -v en-us+f3 -a 70 -f /tmp/speakin --stdout | sox -t wav - -t raw -r 48000 -c 1 -e signed-integer -b 16 /tmp/speakout");
+  } else {
+    system("espeak -v en-us -a 70 -f /tmp/speakin --stdout | sox -t wav - -t raw -r 48000 -c 1 -e signed-integer -b 16 /tmp/speakout");
   }
 #endif
 
@@ -205,7 +205,6 @@ int main(int argc,char *argv[]){
   day = tm->tm_mday;
   month = tm->tm_mon + 1;
   year = tm->tm_year + 1900;
-  doy = tm->tm_yday + 1;
   setlocale(LC_ALL,getenv("LANG"));
 
   // Read and process command line arguments
@@ -267,6 +266,17 @@ int main(int argc,char *argv[]){
 	      
     }	
   }
+  // Compute day of year
+  // don't use doy in tm struct in case date was manually overridden
+  // (Bug found and reported by Jayson Smith jaybird@bluegrasspals.com)
+  doy = day;
+  for(int i = 1; i < month; i++){
+    if(i == 2 && is_leap_year(year))
+      doy += 29;
+    else
+      doy += Days_in_month[i];
+  }
+
   if(isatty(fileno(stdout))){
     fprintf(stderr,"Won't write raw PCM audio to a terminal. Redirect or pipe.\n");
     exit(1);
@@ -281,6 +291,14 @@ int main(int argc,char *argv[]){
     fprintf(stderr,"ut1 offset %d out of range, limited to -7 to +7 tenths\n",dut1);
     dut1 = 0;
   }
+  if(Positive_leap_second_pending && dut1 > -3){
+    fprintf(stderr,"Postive leap second cancelled since dut1 > -0.3 sec\n");
+    Positive_leap_second_pending = 0;
+  } else if(Negative_leap_second_pending && dut1 < 3){
+    fprintf(stderr,"Negative leap second cancelled since dut1 < +0.3 sec\n");
+    Negative_leap_second_pending = 0;
+  }
+
   Audio = malloc(Samprate*61*sizeof(int16_t));
   Samprate_ms = Samprate/1000; // Samples per ms
 
