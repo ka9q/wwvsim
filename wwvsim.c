@@ -7,14 +7,17 @@
 
 // July 2017, Phil Karn, KA9Q
 // (Can you tell I have too much spare time?)
+// Minor tweaks March 2023
 
 #include <assert.h>
 #include <stdio.h>
 #include <math.h>
 #include <complex.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <limits.h>
 #include <math.h>
 #include <memory.h>
@@ -26,18 +29,18 @@ char Libdir[] = "/usr/local/share/ka9q-radio";
 int Samprate = 48000; // Samples per second - try to use this if possible
 int Samprate_ms;      // Samples per millisecond - sampling rates not divisible by 1000 may break
 
-int Negative_leap_second_pending = 0; // If 1, leap second will be removed at end of June or December, whichever is first
-int Positive_leap_second_pending = 0; // If 1, leap second will be inserted at end of June or December, whichever is first
+bool Negative_leap_second_pending = false; // If true, leap second will be removed at end of June or December, whichever is first
+bool Positive_leap_second_pending = false; // If true, leap second will be inserted at end of June or December, whichever is first
 
 // Is specified year a leap year?
-int const is_leap_year(int y){
+bool const is_leap_year(int y){
   if((y % 4) != 0)
-    return 0; // Ordinary year; example: 2017
+    return false; // Ordinary year; example: 2017
   if((y % 100) != 0)
-    return 1; // Examples: 1956, 2004 (i.e., most leap years)
+    return true; // Examples: 1956, 2004 (i.e., most leap years)
   if((y % 400) != 0)
-    return 0; // Examples: 1900, 2100 (the big exception to the usual rule; non-leap US presidential election years)
-  return 1; // Example: 2000 (the exception to the exception)
+    return false; // Examples: 1900, 2100 (the big exception to the usual rule; non-leap US presidential election years)
+  return true; // Example: 2000 (the exception to the exception)
 }
 
 // Applies only to non-leap years; you need special tests for February in leap year
@@ -90,7 +93,7 @@ int announce(int startms,char const *message,int female){
   if(female){
     system("say -v Samantha --output-file=/tmp/speakout.wav --data-format=LEI16@48000 -f /tmp/speakin;sox /tmp/speakout.wav -t raw -r 48000 -c 1 -b 16 -e signed-integer /tmp/speakout");
   } else {
-    system("say -v Alex --output-file=/tmp/speakout.wav --data-format=LEI16@48000 -f /tmp/speakin;sox /tmp/speakout.wav -t raw -r 48000 -c 1 -b 16 -e signed-integer /tmp/speakout");
+    system("say -v Tom --output-file=/tmp/speakout.wav --data-format=LEI16@48000 -f /tmp/speakin;sox /tmp/speakout.wav -t raw -r 48000 -c 1 -b 16 -e signed-integer /tmp/speakout");
   }
 #else // linux
   if(female){
@@ -161,15 +164,13 @@ int overlay_silence(int startms,int stopms){
   int16_t *buffer = Audio + startms*Samprate_ms;
   int samples = (stopms - startms)*Samprate_ms;
 
-  while(samples-- > 0)
-    *buffer++ = 0;
-
+  memset(buffer,0,sizeof(*buffer) * samples);
   return 0;
 }
 
 // Encode a BCD digit in little-endian format (lsb first)
 // NB! Only WWV/WWVH; WWVB uses big-endian format
-void encode_bcd_le(unsigned char *code,int x){
+void encode_bcd_le(uint8_t *code,int x){
   int i;
   for(i=0;i<4;i++){
     code[i] = x & 1;
@@ -177,8 +178,8 @@ void encode_bcd_le(unsigned char *code,int x){
   }
 }
 
-int WWVH = 0; // WWV by default
-int Verbose = 0;
+bool WWVH = false; // WWV by default
+bool Verbose = false;
 
 int main(int argc,char *argv[]){
   int c;
@@ -193,7 +194,7 @@ int main(int argc,char *argv[]){
   double tickfreq = 1000.0; // WWV
   double hourbeep = 1500.0; // Both WWV and WWVH
   int dut1 = 0;
-  int manual_time = 0;
+  bool manual_time = false;
 
   // Use current computer time as default
   struct timeval startup_tv;
@@ -211,13 +212,13 @@ int main(int argc,char *argv[]){
   while((c = getopt(argc,argv,"HY:M:D:h:m:s:u:r:LNv")) != EOF){
     switch(c){
     case 'v':
-      Verbose++;
+      Verbose = true;
       break;
     case 'r':
       Samprate = strtol(optarg,NULL,0); // Try not to change this, may not work
       break;
     case 'H': // Simulate WWVH, otherwise WWV
-      WWVH++;
+      WWVH = true;
       tickfreq = 1200;
       break;
     case 'u': // UT1 offset in tenths of a second, +/- 7
@@ -225,33 +226,33 @@ int main(int argc,char *argv[]){
       break;
     case 'Y': // Manual year setting
       year = strtol(optarg,NULL,0);
-      manual_time++;
+      manual_time = true;
       break;
     case 'M': // Manual month setting
       month = strtol(optarg,NULL,0);
-      manual_time++;
+      manual_time = true;
       break;
     case 'D': // Manual day setting
       day = strtol(optarg,NULL,0);
-      manual_time++;
+      manual_time = true;
       break;
     case 'h': // Manual hour setting
       hour = strtol(optarg,NULL,0);
-      manual_time++;
+      manual_time = true;
       break;
     case 'm': // Manual minute setting
       minute = strtol(optarg,NULL,0);
-      manual_time++;
+      manual_time = true;
       break;
     case 's': // Manual second setting
       sec = strtol(optarg,NULL,0);
-      manual_time++;
+      manual_time = true;
       break;
     case 'L':
-      Positive_leap_second_pending++; // Positive leap second at end of current month
+      Positive_leap_second_pending = true; // Positive leap second at end of current month
       break;
     case 'N':
-      Negative_leap_second_pending++;  // Leap second at end of current month
+      Negative_leap_second_pending = true;  // Leap second at end of current month
       break;
     case '?':
       fprintf(stderr,"Usage: %s [-v] [-r samprate] [-H] [-u ut1offset] [-Y year] [-M month] [-D day] [-h hour] [-m min] [-s sec] [-L|-N]\n",argv[0]);
@@ -284,7 +285,7 @@ int main(int argc,char *argv[]){
 
   if(Positive_leap_second_pending && Negative_leap_second_pending){
     fprintf(stderr,"Positive and negative leap seconds can't both be pending! Both cancelled\n");
-    Positive_leap_second_pending = Negative_leap_second_pending = 0;
+    Positive_leap_second_pending = Negative_leap_second_pending = false;
   }
 
   if(dut1 > 7 || dut1 < -7){
@@ -293,10 +294,10 @@ int main(int argc,char *argv[]){
   }
   if(Positive_leap_second_pending && dut1 > -3){
     fprintf(stderr,"Postive leap second cancelled since dut1 > -0.3 sec\n");
-    Positive_leap_second_pending = 0;
+    Positive_leap_second_pending = false;
   } else if(Negative_leap_second_pending && dut1 < 3){
     fprintf(stderr,"Negative leap second cancelled since dut1 < +0.3 sec\n");
-    Negative_leap_second_pending = 0;
+    Negative_leap_second_pending = false;
   }
 
   Audio = malloc(Samprate*61*sizeof(int16_t));
@@ -314,9 +315,8 @@ int main(int argc,char *argv[]){
     // Punt
     fprintf(stderr,"Warning: DST rules prior to %d not implemented; DST bits = 0\n",year);
   } else {
-    int ytmp = 2007;
     int dst_start_dom = 11;
-    for(;ytmp<= year;ytmp++){
+    for(int ytmp = 2007;ytmp<= year;ytmp++){
       dst_start_dom--; // One day earlier each year
       if(is_leap_year(ytmp))
 	dst_start_dom--; // And an extra day earlier after a leap year february
@@ -360,8 +360,7 @@ int main(int argc,char *argv[]){
       FILE *fp = fopen(fname,"r");
       if(fp != NULL){
 	char buffer[10000];
-	int r;
-	r = fread(buffer,sizeof(*buffer),10000,fp);
+	int const r = fread(buffer,sizeof(*buffer),10000,fp);
 	fclose(fp);
 	if(r > 0){
 	  buffer[r] = '\0';
@@ -376,9 +375,7 @@ int main(int argc,char *argv[]){
       FILE *fp = fopen(fname,"r");
       if(fp != NULL){
 	char buffer[10000];
-	int r;
-
-	r = fread(buffer,sizeof(*buffer),10000,fp);
+	int const r = fread(buffer,sizeof(*buffer),10000,fp);
 	fclose(fp);
 	if(r > 0){
 	  buffer[r] = '\0';
@@ -388,9 +385,9 @@ int main(int argc,char *argv[]){
     }
 
     // Insert minute announcement
-    int nextminute,nexthour; // What are the next hour and minute?
-    nextminute = minute;
-    nexthour = hour;
+    // What are the next hour and minute?
+    int nextminute = minute;
+    int nexthour = hour;
     if(++nextminute == 60){
       nextminute = 0;
       if(++nexthour == 24)
@@ -406,7 +403,7 @@ int main(int argc,char *argv[]){
       announce(45000,message,1); // WWVH: female voice at 45 seconds
 
     // Generate and add 100 Hz timecode
-    unsigned char code[61]; // one extra for a possible leap second
+    uint8_t code[61]; // one extra for a possible leap second
 
     memset(code,0,sizeof(code)); // All bits default to 0
     if(dst_start_doy != 0){
@@ -440,8 +437,7 @@ int main(int argc,char *argv[]){
     encode_bcd_le(code+56,abs(dut1));  // magnitude, extends into marker 59 and is ignored
 
     // Modulate time code onto 100 Hz subcarrier
-    int s;
-    for(s=1;s<61;s++){ // No subcarrier during second 0 (minute/hour beep)
+    for(int s=1;s<61;s++){ // No subcarrier during second 0 (minute/hour beep)
       if((s % 10) == 9){
 	add_tone(s*1000,s*1000+800,100,marker_high_amp);	 // 800 ms markers @ -15 dBFS
 	add_tone(s*1000+800,s*1000+1000,100,marker_low_amp);     // rest of tone at -30 dBFS
@@ -459,7 +455,7 @@ int main(int argc,char *argv[]){
     overlay_silence(800,1000);
     
     // Pre-empt with second ticks and guard interval
-    for(s=1;s<60;s++){
+    for(int s=1;s<60;s++){
       if(s != 29 && s != 59){ // No ticks on 29 and 59 (or 60)
 	overlay_silence(1000*s-10,1000*s);          // 10 ms of silence at end of previous second (OK because we start with s=1)
 	overlay_tone(1000*s,1000*s+5,tickfreq,tick_amp); // 5 ms tick at 100% modulation on second
@@ -473,8 +469,7 @@ int main(int argc,char *argv[]){
     }
     if(Verbose){
       fprintf(stderr,"%d/%d/%d %02d:%02d:%02d\n",month,day,year,hour,minute,sec);
-      int s;
-      for(s=0;s<length;s++){
+      for(int s=0;s<length;s++){
 	if((s % 10) == 0 && s < 60)
 	  fprintf(stderr,"%02d: ",s);
 	if(s == 0)
@@ -500,7 +495,7 @@ int main(int argc,char *argv[]){
       if(Verbose)
 	fprintf(stderr,"startup delay %'d usec\n",startup_delay);
       samplenum = (Samprate_ms * startup_delay) / 1000;
-      manual_time = 1; // do this only first time
+      manual_time = true; // do this only first time
     }
     // Write the constructed buffer, minus startup delay plus however many seconds
     // have already elapsed since the minute. This happens only at startup;
@@ -508,12 +503,14 @@ int main(int argc,char *argv[]){
     fwrite(Audio+samplenum+sec*Samprate,sizeof(*Audio),
 	   Samprate * (length-sec) - samplenum,stdout);
 
+    fflush(stdout);
+
     if(length == 61){
       // Leap second just occurred in this last minute
-      Positive_leap_second_pending = 0;
+      Positive_leap_second_pending = false;
       dut1 += 10;
     } else if(length == 59){
-      Negative_leap_second_pending = 0;
+      Negative_leap_second_pending = false;
       dut1 -= 10;
     }
     // Advance to next minute
