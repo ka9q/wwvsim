@@ -16,6 +16,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <limits.h>
