@@ -24,7 +24,7 @@ install: wwvsim
 	ln -f $(WWVH_DIR)/wwvh-id.txt $(WWVH_DIR)/59.txt
 	ln -f $(WWV_DIR)/test.raw $(WWVH_DIR)/test.raw
 	ln -f $(WWV_DIR)/test.raw $(WWV_DIR)/8.raw
-	ln -f $(WWV_DIR)/test.raw $(WWVH_DIR/48.raw
+	ln -f $(WWV_DIR)/test.raw $(WWVH_DIR)/48.raw
 
 
 wwvsim: wwvsim.o
