@@ -8,12 +8,12 @@ all:	wwvsim
 
 clean:
 	rm -f *.o wwvsim
-	rcsclean
 
 install: wwvsim	
 	install -D --target-directory=$(BINDIR) wwvsim
 	install -D --target-directory=$(WWV_DIR) wwv-id.txt wwv-id.raw
 	install -D --target-directory=$(WWVH_DIR) wwvh-id.txt wwvh-id.raw
+	install -D --target-directory=$(WWV_DIR) test.raw
 	ln -f $(WWV_DIR)/wwv-id.raw $(WWV_DIR)/0.raw
 	ln -f $(WWV_DIR)/wwv-id.txt $(WWV_DIR)/0.txt
 	ln -f $(WWV_DIR)/wwv-id.raw $(WWV_DIR)/30.raw
@@ -22,6 +22,10 @@ install: wwvsim
 	ln -f $(WWVH_DIR)/wwvh-id.txt $(WWVH_DIR)/29.txt
 	ln -f $(WWVH_DIR)/wwvh-id.raw $(WWVH_DIR)/59.raw
 	ln -f $(WWVH_DIR)/wwvh-id.txt $(WWVH_DIR)/59.txt
+	ln -f $(WWV_DIR)/test.raw $(WWVH_DIR)/test.raw
+	ln -f $(WWV_DIR)/test.raw $(WWV_DIR)/8.raw
+	ln -f $(WWV_DIR)/test.raw $(WWVH_DIR/48.raw
+
 
 wwvsim: wwvsim.o
 	$(CC) -g -o $@ $^ -lportaudio -lm
