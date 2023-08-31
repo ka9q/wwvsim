@@ -21,6 +21,7 @@
 // Better able to handle slow speech synthesizers
 
 #define USE_PORTAUDIO 1 // Enable direct on-time output to sound device with portaudio when stdout is a terminal
+#define PIPER 1 // Piper TTS
 
 #define _GNU_SOURCE
 #include <assert.h>
@@ -46,6 +47,14 @@
 PaStream *Stream;
 #define FRAMES_PER_BUFFER 1024
 #endif
+
+#if __APPLE__
+#define pthread_setname(x) pthread_setname_np(x)
+#else // !__APPLE__
+// Not apple (Linux, etc)
+#define pthread_setname(x) pthread_setname_np(pthread_self(),(x))
+#endif // ifdef __APPLE__
+
 
 char Libdir[] = "/usr/local/share/ka9q-radio";
 
@@ -134,20 +143,19 @@ int announce_audio_file(int16_t *output, char const *file, int startms){
 // Use female = true for WWVH, false for WWV
 int announce_text_file(int16_t *output,char const *file, int startms, bool female){
   int r = -1;
-  char *fullname = NULL;
-  char *command = NULL;
 
   char tempfile_raw[L_tmpnam];
   strncpy(tempfile_raw,"/tmp/speakXXXXXXXXXX.raw",sizeof(tempfile_raw));
   mkstemps(tempfile_raw,4);
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(PIPER)
   char tempfile_wav[L_tmpnam];
   strncpy(tempfile_wav,"/tmp/speakXXXXXXXXXX.wav",sizeof(tempfile_wav));
   mkstemps(tempfile_wav,4);
 #endif
 
   int asr = -1;
+  char *fullname = NULL;
   if(file[0] == '/')
     asr = asprintf(&fullname,"%s",file); // Leading slash indicates absolute path name
   else
@@ -162,16 +170,19 @@ int announce_text_file(int16_t *output,char const *file, int startms, bool femal
   char const *voice = NULL;
   asr = -1;
 
+  char *command = NULL;
+  
 #ifdef __APPLE__
   voice = female ? "Samantha" : "Alex";
   asr = asprintf(&command,"say -v %s --output-file=%s --data-format=LEI16@48000 -f %s; sox %s -t raw -r 48000 -c 1 -b 16 -e signed-integer %s",
 	   voice,tempfile_wav,fullname,tempfile_wav,tempfile_raw);
 
 #elif defined(PIPER)
-  asr = asprintf(&command,"/usr/local/lib/piper/piper --model /usr/local/ilb/piper/en_US-ryan.medium.onnx --output_file %s < %s",
-		 tempfile_wav,fullname);
+  voice = female ? "en_US-kathleen-low.onnx" : "en_US-ryan-medium.onnx";
+  asr = asprintf(&command,"/usr/local/bin/piper --model /usr/local/lib/piper/%s --output_file - < %s | sox -t wav - -t raw -r 48000 -c 1 -b 16 -e signed-integer %s",
+		 voice,fullname,tempfile_raw);
 
-#else // linux
+#else // crappy espeak
   voice = female ? "en-us+f3" : "en-us";
   asr = asprintf(&command,"espeak -v %s -a 70 -f %s --stdout | sox -t wav - -t raw -r 48000 -c 1 -b 16 -e signed-integer %s",
 	   voice,fullname,tempfile_raw);
@@ -537,6 +548,7 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
 // Read from buffer, send to standard output
 // In separate thread to run parallel with next buffer generation (similar to port audio for direct output)
 void *output_thread(void *p){
+  pthread_setname("output");
 
   bool started = false;
 
@@ -567,9 +579,11 @@ void *output_thread(void *p){
       }
     } else {
       fwrite(qe->buffer + qe->offset,sizeof(int16_t),qe->length - qe->offset,stdout);
+      fflush(stdout);
     }
 #else
     fwrite(qe->buffer + qe->offset,sizeof(int16_t),qe->length - qe->offset,stdout);
+    fflush(stdout);
 #endif
     free(qe->buffer);
     free(qe);
@@ -589,6 +603,7 @@ int qlen(){
   pthread_mutex_lock(&Output_mutex);
   for(struct qentry *q = Queue;q != NULL;q = q->next)
     len++;
+  pthread_mutex_unlock(&Output_mutex);
   return len;
 }
 
