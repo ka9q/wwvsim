@@ -190,6 +190,17 @@ int announce_text_file(int16_t *output,char const *file, int startms, bool femal
   if(asr == -1 || !command)
     goto done; // asprintf failed somehow
 
+  if(Verbose){
+    fprintf(stderr,"Executing \"%s\" to speak:\n",command);
+    FILE *in = fopen(fullname,"r");
+    int c;
+    while((c = fgetc(in)) != EOF)
+      fputc(c,stderr);
+    fputc('\n',stderr);
+    fflush(stderr);
+    fclose(in);
+  }
+
   system(command);
 
   r = announce_audio_file(output,tempfile_raw, startms);
@@ -570,7 +581,6 @@ void *output_thread(void *p){
 	exit(1);
       }
       started = true;
-      fprintf(stderr,"stream = %p\n",Stream);
     }
     if(Stream){
       int err = Pa_WriteStream(Stream,qe->buffer + qe->offset,qe->length - qe->offset);
