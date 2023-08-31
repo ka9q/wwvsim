@@ -208,7 +208,7 @@ int announce_text_file(int16_t *output,char const *file, int startms, bool femal
  done:; // Go here directly on errors
   // Clean up
   unlink(tempfile_raw);
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(PIPER)
   unlink(tempfile_wav);
 #endif
 
