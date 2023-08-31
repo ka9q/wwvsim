@@ -28,5 +28,6 @@ install: wwvsim
 
 
 wwvsim: wwvsim.o
-	$(CC) -g -o $@ $^ -lportaudio -lm
+	$(CC) -g -o $@ $^ -lportaudio -lm -lpthread
+	
 
