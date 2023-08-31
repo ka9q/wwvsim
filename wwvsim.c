@@ -17,8 +17,10 @@
 //     will probably require changes when oceanic weather goes away at end of Oct 2018
 
 // Minor tweaks 16 Mar 2023
+// Major rewrite 30 Aug 2023 to use a FIFO queue feeding a separate output thread
+// Better able to handle slow speech synthesizers
 
-#define DIRECT 1 // Enable direct on-time output to sound device with portaudio when stdout is a terminal
+#define USE_PORTAUDIO 1 // Enable direct on-time output to sound device with portaudio when stdout is a terminal
 
 #define _GNU_SOURCE
 #include <assert.h>
@@ -30,24 +32,42 @@
 #include <time.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <limits.h>
 #include <math.h>
 #include <memory.h>
 #include <sys/time.h>
 #include <locale.h>
 #include <sys/stat.h>
+#include <pthread.h>
 
-#ifdef DIRECT
+#ifdef USE_PORTAUDIO
 #include <portaudio.h>
+PaStream *Stream;
+#define FRAMES_PER_BUFFER 1024
 #endif
 
 char Libdir[] = "/usr/local/share/ka9q-radio";
 
 int Samprate = 48000; // Samples per second - try to use this if possible
 int Samprate_ms;      // Samples per millisecond - sampling rates not divisible by 1000 may break
-bool Direct_mode;      // Writing directly to audio device
-bool WWVH = 0; // WWV by default
-bool Verbose = 0;
+bool WWVH = false; // WWV by default
+bool Verbose = false;
+
+struct qentry {
+  struct qentry *next;
+  int16_t *buffer;
+  int offset; // Starting offset
+  int length; // Samples
+};
+
+struct qentry *Queue;
+
+bool DirectOutput;
+pthread_t Output_thread;
+void *output_thread(void *p);
+pthread_mutex_t Output_mutex; // Protect queue
+pthread_cond_t Output_cond;
 
 bool Negative_leap_second_pending = false; // If true, leap second will be removed at end of June or December, whichever is first
 bool Positive_leap_second_pending = false; // If true, leap second will be inserted at end of June or December, whichever is first
@@ -111,8 +131,8 @@ int announce_audio_file(int16_t *output, char const *file, int startms){
 }
 
 // Synthesize speech from a text file and insert into audio output at specified offset
-// Use female = 1 for WWVH, 0 for WWV
-int announce_text_file(int16_t *output,char const *file, int startms, int female){
+// Use female = true for WWVH, false for WWV
+int announce_text_file(int16_t *output,char const *file, int startms, bool female){
   int r = -1;
   char *fullname = NULL;
   char *command = NULL;
@@ -146,6 +166,10 @@ int announce_text_file(int16_t *output,char const *file, int startms, int female
   voice = female ? "Samantha" : "Alex";
   asr = asprintf(&command,"say -v %s --output-file=%s --data-format=LEI16@48000 -f %s; sox %s -t raw -r 48000 -c 1 -b 16 -e signed-integer %s",
 	   voice,tempfile_wav,fullname,tempfile_wav,tempfile_raw);
+
+#elif defined(PIPER)
+  asr = asprintf(&command,"/usr/local/lib/piper/piper --model /usr/local/ilb/piper/en_US-ryan.medium.onnx --output_file %s < %s",
+		 tempfile_wav,fullname);
 
 #else // linux
   voice = female ? "en-us+f3" : "en-us";
@@ -510,68 +534,80 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
 }
 
 
-// Address of malloc'ed audio output buffer, 2 minutes + 1 second long (in case of leap second)
-int16_t *Audio_buffer;
+// Read from buffer, send to standard output
+// In separate thread to run parallel with next buffer generation (similar to port audio for direct output)
+void *output_thread(void *p){
 
-#ifdef DIRECT
+  bool started = false;
 
-volatile int Odd_minute_length = 60; // 59 or 61 if leap second pending at end of current odd minute
-volatile PaTime Buffer_start_time; // Portaudio time at start of buffer (even minute boundary)
-PaStream *Stream;
-volatile int Buffers;
-// Portaudio callback
-static int pa_callback(const void *inputBuffer, void *outputBuffer,
-		       unsigned long framesPerBuffer,
-		       const PaStreamCallbackTimeInfo* timeInfo,
-		       PaStreamCallbackFlags statusFlags,
-		       void *userData){
-  if(!outputBuffer)
-    return paAbort; // can this happen??
+  while(1){
+    struct qentry *qe;
+    pthread_mutex_lock(&Output_mutex);
+    while(Queue == NULL)
+      pthread_cond_wait(&Output_cond,&Output_mutex);
+    qe = Queue;
+    Queue = qe->next;
+    qe->next = NULL;
+    pthread_mutex_unlock(&Output_mutex);
 
-  // use portaudio time to figure out from where to send
-  int16_t const *rdptr = Audio_buffer + (int)(Samprate * (timeInfo->outputBufferDacTime - Buffer_start_time));
-  int16_t *out = outputBuffer;
-  bool in_low_half = rdptr < Audio_buffer + (60 * Samprate);
-
-  while(framesPerBuffer--){
-    if(!in_low_half && rdptr >= Audio_buffer + (60 + Odd_minute_length) * Samprate){
-      // Wrapped back to beginning
-      in_low_half = true;
-      rdptr -= (60 + Odd_minute_length) * Samprate;
-      Buffer_start_time += 60.0 + Odd_minute_length;
-      Odd_minute_length = 60; // Reset to normal after possible leap second
-      Buffers--;
-    } else if(in_low_half && rdptr >= Audio_buffer + 60 * Samprate){
-      // Passed halfway mark
-      in_low_half = false;
-      Buffers--;
+#if USE_PORTAUDIO
+    if(!started && Stream){
+      int err = Pa_StartStream(Stream);
+      if(err != paNoError){
+	fprintf(stderr,"Portaudio error: %s\n",Pa_GetErrorText(err));
+	exit(1);
+      }
+      started = true;
+      fprintf(stderr,"stream = %p\n",Stream);
     }
-    *out++ = *rdptr++;
+    if(Stream){
+      int err = Pa_WriteStream(Stream,qe->buffer + qe->offset,qe->length - qe->offset);
+      if(err != paNoError){
+	fprintf(stderr,"Portaudio error: %s\n",Pa_GetErrorText(err));
+      }
+    } else {
+      fwrite(qe->buffer + qe->offset,sizeof(int16_t),qe->length - qe->offset,stdout);
+    }
+#else
+    fwrite(qe->buffer + qe->offset,sizeof(int16_t),qe->length - qe->offset,stdout);
+#endif
+    free(qe->buffer);
+    free(qe);
   }
-  return paContinue;
+  return NULL;
+}
+void cleanup(void){
+#if USE_PORTAUDIO
+  Pa_Terminate();
+#endif
 }
 
-#endif
 
+// Return length of output queue
+int qlen(){
+  int len = 0;
+  pthread_mutex_lock(&Output_mutex);
+  for(struct qentry *q = Queue;q != NULL;q = q->next)
+    len++;
+  return len;
+}
 
 int main(int argc,char *argv[]){
-  int c;
-  int year,month,day,hour,minute,sec;
+
   int dut1 = 0;
   bool manual_time = false;
   int devnum = -1;
 
   // Use current computer clock time as default
-  struct timeval startup_tv;
-  gettimeofday(&startup_tv,NULL);
-  struct tm const * const tm = gmtime(&startup_tv.tv_sec);
-  double fsec = .000001 * startup_tv.tv_usec;
-  sec = tm->tm_sec;
-  minute = tm->tm_min;
-  hour = tm->tm_hour;
-  day = tm->tm_mday;
-  month = tm->tm_mon + 1;
-  year = tm->tm_year + 1900;
+  struct timeval start_time;
+  gettimeofday(&start_time,NULL);
+  struct tm const * const tm = gmtime(&start_time.tv_sec);
+  int sec = tm->tm_sec;
+  int minute = tm->tm_min;
+  int hour = tm->tm_hour;
+  int day = tm->tm_mday;
+  int month = tm->tm_mon + 1;
+  int year = tm->tm_year + 1900;
   setlocale(LC_ALL,getenv("LANG"));
 
 #if 0
@@ -580,6 +616,7 @@ int main(int argc,char *argv[]){
   }
 #endif
 
+  int c;
   // Read and process command line arguments
   while((c = getopt(argc,argv,"HY:M:D:h:m:s:u:r:LNvn:")) != EOF){
     switch(c){
@@ -620,7 +657,6 @@ int main(int argc,char *argv[]){
       break;
     case 's': // Manual second setting
       sec = strtol(optarg,NULL,0);
-      fsec = 0;
       manual_time = true;
       break;
     case 'L':
@@ -642,16 +678,9 @@ int main(int argc,char *argv[]){
 	      
     }	
   }
-  // Allocate an audio buffer >= 2 minutes + 1 second long
-  // Even minutes will use first half, odd minutes second half
-  Audio_buffer = malloc(2*Samprate*61*sizeof(*Audio_buffer));
-  memset(Audio_buffer,0,2*Samprate*61*sizeof(*Audio_buffer));
-
   if(isatty(fileno(stdout))){
-#ifdef DIRECT
+#ifdef USE_PORTAUDIO
     // No output redirection, so use portaudio to write directly to audio hardware with "precise" (?) timing
-    Direct_mode = true;
-
     Pa_Initialize();
     PaDeviceIndex dev = Pa_GetDefaultOutputDevice();
     if(devnum != -1)
@@ -661,21 +690,21 @@ int main(int argc,char *argv[]){
     param.device = dev;
     param.channelCount = 1;
     param.sampleFormat = paInt16;
-    param.suggestedLatency = .01;
+    param.suggestedLatency = .02; // Don't make too small
     param.hostApiSpecificStreamInfo = NULL;
 
-    //    Pa_OpenDefaultStream(&Stream,0,1,paInt16,(double)Samprate,48000,pa_callback,NULL); // one whole second?
-    Pa_OpenStream(&Stream,NULL,&param,(double)Samprate,48000,0,pa_callback,NULL);
-    // How about execution latency between gettimeofday() call and here?
-    Buffer_start_time = Pa_GetStreamTime(Stream) - (fsec + sec + ((minute & 1) ? 60 : 0));
-    Pa_StartStream(Stream);
+    int err = Pa_OpenStream(&Stream,NULL,&param,(double)Samprate,0,0,NULL,NULL);
+    if(err != paNoError){
+      fprintf(stderr,"Pa_OpenStream failed\n");
+      exit(1);
+    }
+    atexit(cleanup);
 #else
     fprintf(stderr,"Won't send PCM to a terminal (direct mode not compiled in)\n");
     exit(1);
 #endif    
 
   }
-
   if(year < 2007)
     fprintf(stderr,"Warning: DST rules prior to %d not implemented; DST bits = 0\n",year);    // Punt
 
@@ -697,12 +726,11 @@ int main(int argc,char *argv[]){
   }
 
   Samprate_ms = Samprate/1000; // Samples per ms
+  bool startup = true;
+  // Set up output thread to write asynchronously
+  pthread_create(&Output_thread,NULL,output_thread,NULL);
 
   while(1){
-    // First buffer half for even minutes, latter half for odd minutes
-    // Even minutes are always 60 seconds long
-    int16_t *audio = (minute % 2) ? (Audio_buffer + 60 * Samprate) : Audio_buffer;
-
     int length = 60;    // Default length 60 seconds
     if((month == 6 || month == 12) && hour == 23 && minute == 59){
       if(Positive_leap_second_pending){
@@ -711,6 +739,13 @@ int main(int argc,char *argv[]){
 	length = 59; // Negative leap second
       }
     }
+
+    struct qentry *qe = calloc(1,sizeof(*qe));
+    assert(qe != NULL);
+    qe->length = length * Samprate;
+    qe->buffer = calloc(sizeof(*qe->buffer),qe->length);
+    assert(qe->buffer != NULL);
+
     // Generate timecode
     uint8_t code[61]; // one extra for a possible leap second
     bool leap_pending = (Positive_leap_second_pending || Negative_leap_second_pending);
@@ -723,41 +758,52 @@ int main(int argc,char *argv[]){
     }
 
     // Build a minute of audio
-    makeminute(audio,length,WWVH,code,dut1,hour,minute);
+    makeminute(qe->buffer,length,WWVH,code,dut1,hour,minute);
 
-#ifdef DIRECT
-    if(!Direct_mode){
-#endif
-      int samplenum = 0;
-      if(!manual_time){
-	// Find time interval since startup, trim that many samples from the beginning of the buffer so we are on time
-	struct timeval tv;
-	gettimeofday(&tv,NULL);
-	int const startup_delay = 1000000*(tv.tv_sec - startup_tv.tv_sec) +
-	  tv.tv_usec - startup_tv.tv_usec;
-	
-	if(Verbose)
-	  fprintf(stderr,"startup delay %'d usec\n",startup_delay);
-	samplenum = (Samprate_ms * startup_delay) / 1000;
-	manual_time = true; // do this only first time
+    if(!manual_time && startup){
+      // Buffers are constructed starting on the minute, so compute
+      // how much of it to skip in the first one.
+      // Speech synthesis can be slow, so look at the clock again
+      // Don't do with this when time is manually set
+      struct timeval now;
+      gettimeofday(&now,NULL);
+      struct tm const * const tm = gmtime(&now.tv_sec);
+      if(minute != tm->tm_min){
+	// We're already into the next minute? Speech synthesis can be slow.
+	// Discard this first one and continue with the next minute
+	// (What if we start during a leap second? geez...it never ends...)
+	fprintf(stderr,"Discarding first minute\n");
+	free(qe->buffer);
+	free(qe);
+	goto next_minute;
+      } else {
+	// Calculate starting offset into first buffer
+	qe->offset = Samprate * ((long long)1000000 * tm->tm_sec + now.tv_usec) /  1000000;
+	assert(qe->offset < Samprate * 60);
+	startup = false;
       }
-      // Write the constructed buffer, minus startup delay plus however many seconds
-      // have already elapsed since the minute. This happens only at startup;
-      // on all subsequent minutes the entire buffer will be written
-      fwrite(audio+samplenum+sec*Samprate,sizeof(*audio),
-	     Samprate * (length-sec) - samplenum,stdout);
-
-#ifdef DIRECT
-    } else {
-      Buffers++;
-      if((minute & 1) && length != 60)
-	Odd_minute_length = length;	// Just wrote odd minute with leap second at end
-
-      while(Buffers > 1)
-	sleep(1);
     }
-#endif
 
+    // Append to queue, wake output
+    pthread_mutex_lock(&Output_mutex);
+    struct qentry *last = NULL;
+    for(struct qentry *q = Queue;q != NULL;last = q,q = q->next)
+      ;
+
+    if(last)
+      last->next = qe;
+    else 
+      Queue = qe; // First on empty queue
+
+    pthread_cond_signal(&Output_cond);
+    pthread_mutex_unlock(&Output_mutex);
+
+    // Wait for queue to drain a little
+    while(qlen() >= 2){
+      useconds_t interval = 30000000; // Pause 30 sec
+      usleep(interval);
+    }
+  next_minute:;
     if(length == 61){
       // Leap second just occurred in this last minute
       Positive_leap_second_pending = false;
