@@ -124,6 +124,7 @@ char *chomp(char *str){
   cp = strchr(str,'\r');  
   if(cp != NULL)
     *cp = '\0';
+  return str;
 }
 
 // Generate complex phasor with specified angle in radians
