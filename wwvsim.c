@@ -117,6 +117,14 @@ int const WWVH_tone_schedule[60] = {
     0,  0,  0,500,600,500,600,500,600,  0  // 59 is station ID; 52 new special at wwvh?, NOT protected at WWV
 };
 
+char *chomp(char *str){
+  char *cp = strchr(str,'\n');
+  if(cp != NULL)
+    *cp = '\0';
+  cp = strchr(str,'\r');  
+  if(cp != NULL)
+    *cp = '\0';
+}
 
 // Generate complex phasor with specified angle in radians
 // Used for tone generation
@@ -164,6 +172,7 @@ int announce_text_file(int16_t *output,char const *file, int startms, bool femal
   if(asr == -1 || !fullname)
     goto done; // asprintf failed for some reason
 
+  chomp(fullname);
   if(access(fullname,R_OK) != 0)
     goto done; // file isn't readable (what if it's a directory?
 
