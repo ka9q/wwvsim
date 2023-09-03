@@ -152,13 +152,15 @@ int announce_audio_file(int16_t *output, char const *file, int startms){
 int announce_text_file(int16_t *output,char const *file, int startms, bool female){
   int r = -1;
 
-  char tempfile_raw[L_tmpnam];
-  strncpy(tempfile_raw,"/tmp/speakXXXXXXXXXX.raw",sizeof(tempfile_raw));
+  char tempfile_raw[L_tmpnam+1];
+  memset(tempfile_raw,0,sizeof(tempfile_raw));
+  strncpy(tempfile_raw,"/tmp/srawXXXXXX.raw",sizeof(tempfile_raw));
   mkstemps(tempfile_raw,4);
 
 #if defined(__APPLE__) || defined(PIPER)
-  char tempfile_wav[L_tmpnam];
-  strncpy(tempfile_wav,"/tmp/speakXXXXXXXXXX.wav",sizeof(tempfile_wav));
+  char tempfile_wav[L_tmpnam+1];
+  memset(tempfile_wav,0,sizeof(tempfile_wav));
+  strncpy(tempfile_wav,"/tmp/swavXXXXXX.wav",sizeof(tempfile_wav));
   mkstemps(tempfile_wav,4);
 #endif
 
@@ -231,8 +233,9 @@ int announce_text_file(int16_t *output,char const *file, int startms, bool femal
 // Synthesize a text announcement and insert into output buffer
 int announce_text(int16_t *output,char const *message,int startms,int female){
 
-  char tempfile_txt[L_tmpnam];
-  strncpy(tempfile_txt,"/tmp/speakXXXXXXXXXX.txt",sizeof(tempfile_txt));
+  char tempfile_txt[L_tmpnam+1];
+  memset(tempfile_txt,0,sizeof(tempfile_txt));
+  strncpy(tempfile_txt,"/tmp/stextXXXXXX.txt",sizeof(tempfile_txt));
   mkstemps(tempfile_txt,4);
 
   FILE *fp;
