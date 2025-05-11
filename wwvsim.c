@@ -41,6 +41,7 @@
 #include <locale.h>
 #include <sys/stat.h>
 #include <pthread.h>
+#include <getopt.h>
 
 #ifdef USE_PORTAUDIO
 #include <portaudio.h>
@@ -59,9 +60,39 @@ PaStream *Stream;
 char Libdir[] = "/usr/local/share/ka9q-radio";
 
 int Samprate = 48000; // Samples per second - try to use this if possible
-int Samprate_ms;      // Samples per millisecond - sampling rates not divisible by 1000 may break
 bool WWVH = false; // WWV by default
 bool Verbose = false;
+bool Negative_leap_second_pending = false; // If true, leap second will be removed at end of June or December, whichever is first
+bool Positive_leap_second_pending = false; // If true, leap second will be inserted at end of June or December, whichever is first
+bool NoTone = false;
+bool NoVoice = false;
+bool NoTimeCode = false;
+
+
+// Applies only to non-leap years; you need special tests for February in leap year
+int const Days_in_month[] = { // Index 1 = January, 12 = December
+  0,31,28,31,30,31,30,31,31,30,31,30,31
+};
+
+// Tone schedules for each minute of the hour for each station
+// Special exception: no 440 Hz tone in first hour of UTC day; must be handled ad-hoc
+int const WWV_tone_schedule[60] = {
+    0,600,440,  0,  0,600,500,600,  0,  0, // 3 is nist reserved at wwvh, 4 reserved at wwv; 8 research signal; 9-10 storms; 7 undoc wwv
+    0,600,500,600,500,600,  0,600,  0,600, // 14-15 GPS (no longer used - tones), 16 nist reserved, 18 geoalerts; 11 undoc wwv
+  500,600,500,600,500,600,500,600,500,  0, // 29 is silent to protect wwvh id
+    0,600,500,600,500,600,500,600,500,600, // 30 is station ID
+  500,600,500,  0,  0,  0,  0,  0,  0,  0, // 43-51 is silent period to protect wwvh
+    0,  0,500,600,500,600,500,600,500,  0  // 59 is silent to protect wwvh id; 52 new special at wwvh, not protected by wwv
+};
+
+int const WWVH_tone_schedule[60] = {
+    0,440,600,  0,  0,500,600,  0,  0,  0, // 0 silent to protect wwv id; 3 nist reserved; 4 reserved at wwv; 7 protects undoc wwv; 8-10 to protect wwv
+    0,  0,600,500,  0,  0,  0,  0,  0,  0, // 14-19 is silent period to protect wwv; 11 silent to protect undoc wwv
+  600,500,600,500,600,500,600,500,600,  0, // 29 is station ID
+    0,500,600,500,600,500,600,500,600,500, // 30 silent to protect wwv id
+  600,500,600,500,600,  0,600,  0,  0,  0, // 43-44 GPS (unused-tones); 45 geoalerts; 47 nist reserved; 48-51 storms
+    0,  0,  0,500,600,500,600,500,600,  0  // 59 is station ID; 52 new special at wwvh?, NOT protected at WWV
+};
 
 struct qentry {
   struct qentry *next;
@@ -71,15 +102,303 @@ struct qentry {
 };
 
 struct qentry *Queue;
-
-bool DirectOutput;
 pthread_t Output_thread;
 void *output_thread(void *p);
 pthread_mutex_t Output_mutex; // Protect queue
 pthread_cond_t Output_cond;
+int Samprate_ms;      // Samples per millisecond - sampling rates not divisible by 1000 may break
 
-bool Negative_leap_second_pending = false; // If true, leap second will be removed at end of June or December, whichever is first
-bool Positive_leap_second_pending = false; // If true, leap second will be inserted at end of June or December, whichever is first
+void cleanup(void);
+void maketimecode(uint8_t *code,int dut1,bool leap_pending,int year,int month,int day,int hour,int minute);
+void decode_timecode(uint8_t *code,int length);
+void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut1,int hour,int minute);
+int qlen(void);
+bool const is_leap_year(int y);
+
+static char const Optstring[] = "HY:M:D:h:m:s:u:r:LNvn:";
+static const struct option Options[] = {
+  {"device", required_argument, NULL, 'n' },
+  {"verbose", no_argument, NULL, 'v'},
+  {"samprate", required_argument, NULL, 'r'},
+  {"wwvh", no_argument, NULL, 'H'},
+  {"ut1", required_argument, NULL, 'u'},
+  {"year", required_argument, NULL, 'Y'},
+  {"month", required_argument, NULL, 'M'},
+  {"day", required_argument, NULL, 'D'},
+  {"hour", required_argument, NULL, 'h'},
+  {"minute", required_argument, NULL, 'm'},
+  {"second", required_argument, NULL, 's'},
+  {"positive", no_argument, NULL, 'P'},
+  {"negative", no_argument, NULL, 'N'},
+  {"help", no_argument, NULL, '?'},
+  {"no-voice", no_argument, NULL, 'd'},
+  {"no-tone", no_argument, NULL, 't'},
+  {"no-code", no_argument, NULL, 'c'},
+  { NULL, no_argument, NULL, 0},
+};
+
+
+int main(int argc,char *argv[]){
+
+  int dut1 = 0;
+  bool manual_time = false;
+  int devnum = -1;
+
+  // Use current computer clock time as default
+  struct timeval start_time;
+  gettimeofday(&start_time,NULL);
+  struct tm const * const tm = gmtime(&start_time.tv_sec);
+  int sec = tm->tm_sec;
+  int minute = tm->tm_min;
+  int hour = tm->tm_hour;
+  int day = tm->tm_mday;
+  int month = tm->tm_mon + 1;
+  int year = tm->tm_year + 1900;
+  setlocale(LC_ALL,getenv("LANG"));
+
+#if 0
+  for(int y=2007;y < 2100;y++){
+    fprintf(stderr,"year %d dst start %d\n",y,dst_start_doy(y));
+  }
+#endif
+
+  int c;
+  // Read and process command line arguments
+  while((c = getopt_long(argc,argv,Optstring,Options,NULL)) != EOF){
+    switch(c){
+    case 'c':
+      NoTimeCode = true;
+      break;
+    case 'd':
+      NoVoice = true;
+      break;
+    case 't':
+      NoTone = true; // Nicht diese tone!
+      break;
+    case 'n':
+      devnum = strtol(optarg,NULL,0);
+      break;
+    case 'v':
+      Verbose = true;
+      break;
+    case 'r':
+      Samprate = strtol(optarg,NULL,0); // Try not to change this, may not work
+      break;
+    case 'H': // Simulate WWVH, otherwise WWV
+      WWVH = true;
+      break;
+    case 'u': // UT1 offset in tenths of a second, +/- 7
+      dut1 = strtol(optarg,NULL,0);
+      break;
+    case 'Y': // Manual year setting
+      year = strtol(optarg,NULL,0);
+      manual_time = true;
+      break;
+    case 'M': // Manual month setting
+      month = strtol(optarg,NULL,0);
+      manual_time = true;
+      break;
+    case 'D': // Manual day setting
+      day = strtol(optarg,NULL,0);
+      manual_time = true;
+      break;
+    case 'h': // Manual hour setting
+      hour = strtol(optarg,NULL,0);
+      manual_time = true;
+      break;
+    case 'm': // Manual minute setting
+      minute = strtol(optarg,NULL,0);
+      manual_time = true;
+      break;
+    case 's': // Manual second setting
+      sec = strtol(optarg,NULL,0);
+      manual_time = true;
+      break;
+    case 'L':
+      Positive_leap_second_pending = true; // Positive leap second at end of current month
+      break;
+    case 'N':
+      Negative_leap_second_pending = true;  // Leap second at end of current month
+      break;
+    case '?':
+      fprintf(stderr,"Usage: %s [options]\n",argv[0]);
+      fprintf(stderr,"[-n | --device <number>] select output device\n");
+      fprintf(stderr,"[-v | --verbose]\n");
+      fprintf(stderr,"[-r | --samprate <Hz>]\n");
+      fprintf(stderr,"[-H | --wwvh] set WWVH mode; default WWV\n");
+      fprintf(stderr,"[-u | --ut1 <offset>] ut1-utc offset in tenths of a second\n");
+      fprintf(stderr,"[-Y | --year <year>] default system clock, indivdual fields can be overridden\n");
+      fprintf(stderr,"[-M | --month <1-12>]\n");
+      fprintf(stderr,"[-D | --day <1-31>]\n");
+      fprintf(stderr,"[-h | --hour <0-23>]\n");
+      fprintf(stderr,"[-m | --minute <0-59>]\n");
+      fprintf(stderr,"[-s | --second <0-60>]\n");
+      fprintf(stderr,"[-P | --positive] flag upcoming positive leap second \n");
+      fprintf(stderr,"[-N | --negative] flag upcoming negative leap second \n");
+      fprintf(stderr,"[-t | --no-tone] suppress 440, 500 and 600 Hz tones\n");
+      fprintf(stderr,"[-d | --no-voice] suppress all voice announcements\n");
+      fprintf(stderr,"[-c | --no-code] suppress 100 Hz timecode\n");
+      exit(1);
+
+    }
+  }
+  if(isatty(fileno(stdout))){
+#ifdef USE_PORTAUDIO
+    // No output redirection, so use portaudio to write directly to audio hardware with "precise" (?) timing
+    Pa_Initialize();
+    PaDeviceIndex dev = Pa_GetDefaultOutputDevice();
+    if(devnum != -1)
+      dev = devnum;
+
+    PaStreamParameters param;
+    param.device = dev;
+    param.channelCount = 1;
+    param.sampleFormat = paInt16;
+    param.suggestedLatency = .02; // Don't make too small
+    param.hostApiSpecificStreamInfo = NULL;
+
+    int err = Pa_OpenStream(&Stream,NULL,&param,(double)Samprate,0,0,NULL,NULL);
+    if(err != paNoError){
+      fprintf(stderr,"Pa_OpenStream failed\n");
+      exit(1);
+    }
+    atexit(cleanup);
+#else
+    fprintf(stderr,"Won't send PCM to a terminal (direct mode not compiled in)\n");
+    exit(1);
+#endif
+
+  }
+  if(year < 2007)
+    fprintf(stderr,"Warning: DST rules prior to %d not implemented; DST bits = 0\n",year);    // Punt
+
+  if(Positive_leap_second_pending && Negative_leap_second_pending){
+    fprintf(stderr,"Positive and negative leap seconds can't both be pending! Both cancelled\n");
+    Positive_leap_second_pending = Negative_leap_second_pending = false;
+  }
+
+  if(dut1 > 7 || dut1 < -7){
+    fprintf(stderr,"ut1 offset %d out of range, limited to -7 to +7 tenths\n",dut1);
+    dut1 = 0;
+  }
+  if(Positive_leap_second_pending && dut1 > -3){
+    fprintf(stderr,"Postive leap second cancelled since dut1 > -0.3 sec\n");
+    Positive_leap_second_pending = false;
+  } else if(Negative_leap_second_pending && dut1 < 3){
+    fprintf(stderr,"Negative leap second cancelled since dut1 < +0.3 sec\n");
+    Negative_leap_second_pending = false;
+  }
+
+  Samprate_ms = Samprate/1000; // Samples per ms
+  bool startup = true;
+  // Set up output thread to write asynchronously
+  pthread_create(&Output_thread,NULL,output_thread,NULL);
+
+  while(1){
+    int length = 60;    // Default length 60 seconds
+    if((month == 6 || month == 12) && hour == 23 && minute == 59){
+      if(Positive_leap_second_pending){
+	length = 61; // This minute ends with a leap second!
+      } else if(Negative_leap_second_pending){
+	length = 59; // Negative leap second
+      }
+    }
+
+    struct qentry *qe = calloc(1,sizeof(*qe));
+    assert(qe != NULL);
+    qe->length = length * Samprate;
+    qe->buffer = calloc(sizeof(*qe->buffer),qe->length);
+    assert(qe->buffer != NULL);
+
+    // Generate timecode
+    uint8_t code[61] = {0}; // one extra for a possible leap second
+    if(!NoTimeCode){
+      bool leap_pending = (Positive_leap_second_pending || Negative_leap_second_pending);
+      maketimecode(code,dut1,leap_pending,year,month,day,hour,minute);
+
+      // Optionally dump timecode
+      if(Verbose){
+	fprintf(stderr,"%d/%d/%d %02d:%02d\n",month,day,year,hour,minute);
+	decode_timecode(code,length);
+      }
+    }
+    // Build a minute of audio
+    makeminute(qe->buffer,length,WWVH,NoTimeCode ? NULL : code,dut1,hour,minute);
+
+    if(!manual_time && startup){
+      // Buffers are constructed starting on the minute, so compute
+      // how much of it to skip in the first one.
+      // Speech synthesis can be slow, so look at the clock again
+      // Don't do with this when time is manually set
+      struct timeval now;
+      gettimeofday(&now,NULL);
+      struct tm const * const tm = gmtime(&now.tv_sec);
+      if(minute != tm->tm_min){
+	// We're already into the next minute? Speech synthesis can be slow.
+	// Discard this first one and continue with the next minute
+	// (What if we start during a leap second? geez...it never ends...)
+	fprintf(stderr,"Discarding first minute\n");
+	free(qe->buffer);
+	free(qe);
+	goto next_minute;
+      } else {
+	// Calculate starting offset into first buffer
+	qe->offset = Samprate * ((long long)1000000 * tm->tm_sec + now.tv_usec) /  1000000;
+	assert(qe->offset < Samprate * 60);
+	startup = false;
+      }
+    }
+
+    // Append to queue, wake output
+    pthread_mutex_lock(&Output_mutex);
+    struct qentry *last = NULL;
+    for(struct qentry *q = Queue;q != NULL;last = q,q = q->next)
+      ;
+
+    if(last)
+      last->next = qe;
+    else
+      Queue = qe; // First on empty queue
+
+    pthread_cond_signal(&Output_cond);
+    pthread_mutex_unlock(&Output_mutex);
+
+    // Wait for queue to drain a little
+    while(qlen() >= 2){
+      useconds_t interval = 30000000; // Pause 30 sec
+      usleep(interval);
+    }
+  next_minute:;
+    if(length == 61){
+      // Leap second just occurred in this last minute
+      Positive_leap_second_pending = false;
+      dut1 += 10;
+    } else if(length == 59){
+      Negative_leap_second_pending = false;
+      dut1 -= 10;
+    }
+    // Advance to next minute
+    sec = 0;
+    if(++minute > 59){
+      // New hour
+      minute = 0;
+      if(++hour > 23){
+	// New day
+	hour = 0;
+	if(++day > ((month == 2 && is_leap_year(year))? 29 : Days_in_month[month])){
+	  // New month
+	  day = 1;
+	  if(++month > 12){
+	    // New year
+	    month = 1;
+	    ++year;
+	  }
+	}
+      }
+    }
+  }
+}
+
 
 // Is specified year a leap year?
 bool const is_leap_year(int y){
@@ -92,36 +411,12 @@ bool const is_leap_year(int y){
   return true; // Example: 2000 (the exception to the exception)
 }
 
-// Applies only to non-leap years; you need special tests for February in leap year
-int const Days_in_month[] = { // Index 1 = January, 12 = December
-  0,31,28,31,30,31,30,31,31,30,31,30,31
-};
-
-// Tone schedules for each minute of the hour for each station
-// Special exception: no 440 Hz tone in first hour of UTC day; must be handled ad-hoc
-int const WWV_tone_schedule[60] = {
-    0,600,440,  0,  0,600,500,600,  0,  0, // 3 is nist reserved at wwvh, 4 reserved at wwv; 8-10 storms; 7 undoc wwv
-    0,600,500,600,500,600,  0,600,  0,600, // 14-15 GPS (no longer used - tones), 16 nist reserved, 18 geoalerts; 11 undoc wwv
-  500,600,500,600,500,600,500,600,500,  0, // 29 is silent to protect wwvh id
-    0,600,500,600,500,600,500,600,500,600, // 30 is station ID
-  500,600,500,  0,  0,  0,  0,  0,  0,  0, // 43-51 is silent period to protect wwvh
-    0,  0,500,600,500,600,500,600,500,  0  // 59 is silent to protect wwvh id; 52 new special at wwvh, not protected by wwv
-};
-
-int const WWVH_tone_schedule[60] = {
-    0,440,600,  0,  0,500,600,  0,  0,  0, // 0 silent to protect wwv id; 3 nist reserved; 4 reserved at wwv; 7 protects undoc wwv; 8-10 protects storms at wwv
-    0,  0,600,500,  0,  0,  0,  0,  0,  0, // 14-19 is silent period to protect wwv; 11 silent to protect undoc wwv
-  600,500,600,500,600,500,600,500,600,  0, // 29 is station ID
-    0,500,600,500,600,500,600,500,600,500, // 30 silent to protect wwv id
-  600,500,600,500,600,  0,600,  0,  0,  0, // 43-44 GPS (unused-tones); 45 geoalerts; 47 nist reserved; 48-51 storms
-    0,  0,  0,500,600,500,600,500,600,  0  // 59 is station ID; 52 new special at wwvh?, NOT protected at WWV
-};
 
 char *chomp(char *str){
   char *cp = strchr(str,'\n');
   if(cp != NULL)
     *cp = '\0';
-  cp = strchr(str,'\r');  
+  cp = strchr(str,'\r');
   if(cp != NULL)
     *cp = '\0';
   return str;
@@ -140,7 +435,7 @@ int announce_audio_file(int16_t *output, char const *file, int startms){
 
   int r = -1;
 
-  FILE *fp;  
+  FILE *fp;
   if((fp = fopen(file,"r")) != NULL){
     r = fread(output+startms*Samprate_ms,sizeof(*output),Samprate_ms*(61000-startms),fp);
     fclose(fp);
@@ -183,7 +478,7 @@ int announce_text_file(int16_t *output,char const *file, int startms, bool femal
   asr = -1;
 
   char *command = NULL;
-  
+
 #ifdef __APPLE__
   voice = female ? "Samantha" : "Alex";
   asr = asprintf(&command,"say -v %s --output-file=%s --data-format=LEI16@48000 -f %s; sox %s -t raw -r 48000 -c 1 -b 16 -e signed-integer %s",
@@ -251,7 +546,7 @@ int announce_text(int16_t *output,char const *message,int startms,int female){
 
 
 // Overlay a tone with frequency 'freq' in audio buffer, overwriting whatever was there
-// starting at 'startms' within the minute and stopping one sample before 'stopms'. 
+// starting at 'startms' within the minute and stopping one sample before 'stopms'.
 // Amplitude 1.0 is 100% modulation, 0.5 is 50% modulation, etc
 // Used first for 500/600 Hz continuous audio tones
 // Then used for 1000/1200 Hz minute/hour beeps and second ticks, which pre-empt everything else.
@@ -397,11 +692,11 @@ void maketimecode(uint8_t *code,int dut1,bool leap_pending,int year,int month,in
     }
 
     code[3] = leap_pending;
-    
+
     // Year
     encode(code+4,year % 10); // Least significant digit
     encode(code+51,(year/10)%10); // Tens digit
-    
+
     // Minute of hour, 0-59
     encode(code+10,minute%10); // Least significant digit
     encode(code+15,minute/10); // Most significant digit, extends into unused bit 18
@@ -434,20 +729,20 @@ void decode_timecode(uint8_t *code,int length){
     if(s < 59 && (s % 10 == 9))
       fputc('\n',stderr);
   }
-  fputc('\n',stderr);      
+  fputc('\n',stderr);
   fprintf(stderr,"year %d%d",decode(code+51),decode(code+4));
   fprintf(stderr," doy %d%d%d",decode(code+40),decode(code+35),decode(code+30));
-  
+
   fprintf(stderr," hour %d%d",decode(code+25),decode(code+20));
   fprintf(stderr," minute %d%d",decode(code+15),decode(code+10));
   int dut1 = decode(code+56);
   if(!code[50])
     dut1 = -dut1;
   fprintf(stderr,"; dut1 %+d",dut1);
-  
+
   if(code[3])
     fprintf(stderr,"; leap second pending");
-  
+
   if(code[2] && code[55])
     fprintf(stderr,"; DST in effect");
   else if(!code[2] && code[55])
@@ -455,10 +750,10 @@ void decode_timecode(uint8_t *code,int length){
   else if(code[2]  && !code[55])
     fprintf(stderr,"; DST ends today");
   else
-    fprintf(stderr,"; DST not in effect");	
-  
+    fprintf(stderr,"; DST not in effect");
+
   fprintf(stderr,"\n\n");
-}  
+}
 
 // Insert tone or announcement into seconds 1-44
 void gen_tone_or_announcement(int16_t *output,bool wwvh,int hour,int minute){
@@ -467,23 +762,23 @@ void gen_tone_or_announcement(int16_t *output,bool wwvh,int hour,int minute){
   // A raw audio file pre-empts everything else
   char *rawfilename = NULL;
   char *textfilename = NULL;
-  
-  if(asprintf(&rawfilename,"%s/%s/%d.raw",Libdir,wwvh ? "wwvh" : "wwv",minute)
+
+  if(!NoVoice && asprintf(&rawfilename,"%s/%s/%d.raw",Libdir,wwvh ? "wwvh" : "wwv",minute)
      && access(rawfilename,R_OK) == 0){
     announce_audio_file(output,rawfilename,1000);
     goto done;
-  } else if(asprintf(&textfilename,"%s/%s/%d.txt",Libdir,wwvh ? "wwvh" : "wwv",minute)
+  } else if(!NoVoice && asprintf(&textfilename,"%s/%s/%d.txt",Libdir,wwvh ? "wwvh" : "wwv",minute)
 	    && access(textfilename,R_OK) == 0){
     announce_text_file(output,textfilename,1000,wwvh);
     goto done;
-  } else {
+  } else if (!NoTone){
     // Otherwise generate a tone, unless silent
     double tone = wwvh ? WWVH_tone_schedule[minute] : WWV_tone_schedule[minute];
-    
+
     // Special case: no 440 Hz tone during hour 0
     if(tone == 440 && hour == 0)
       tone = 0;
-    
+
     if(tone)
       add_tone(output,1000,45000,tone,tone_amp); // Continuous tone from 1 sec until 45 sec
   }
@@ -502,8 +797,10 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
   // NIST 250-67, p 50
   const double marker_high_amp = pow(10.,-6.0/20.);
   //  NIST 250-67, p 47 says 1/3.3 (about -10 dB) but is apparently incorrect; observed is ~ -20 dB
+  // WWV staff says it's meant to be off, but the hardware won't go there so they set it to minimum
   //  const double marker_low_amp = marker_high_amp / 3.3;
-  const double marker_low_amp = marker_high_amp / 10;
+  //  const double marker_low_amp = marker_high_amp / 10;
+  const double marker_low_amp = 0;
   const double tick_amp = 1.0; // 100%, 0dBFS
 
   const double tickfreq = wwvh ? 1200.0 : 1000.0;
@@ -512,7 +809,7 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
   // Build a minute of audio
   memset(output,0,length*Samprate*sizeof(*output)); // Clear previous audio
   gen_tone_or_announcement(output,wwvh,hour,minute);
-  
+
   // Insert minute announcement
   // What are the next hour and minute?
   int nextminute = minute;
@@ -522,36 +819,38 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
     if(++nexthour == 24)
       nexthour = 0;
   }
-  char *message = NULL;
-  int asr = asprintf(&message,"At the tone, %d %s %d %s Coordinated Universal Time",
-	   nexthour,nexthour == 1 ? "hour" : "hours",
-	   nextminute,nextminute == 1 ? "minute" : "minutes");
-  if(asr != -1 && message){
-    if(!wwvh)
-      announce_text(output,message,52500,0); // WWV: male voice at 52.5 seconds
-    else
-      announce_text(output,message,45000,1); // WWVH: female voice at 45 seconds
-    free(message); message = NULL;
-  }
-
-  // Modulate time code onto 100 Hz subcarrier
-  for(int s=1; s<length; s++){ // No subcarrier during second 0 (minute/hour beep)
-    if((s % 10) == 9){
-      add_tone(output,s*1000,s*1000+800,100,marker_high_amp);	 // 800 ms position markers on seconds 9, 19, 29, ...
-      add_tone(output,s*1000+800,s*1000+1000,100,marker_low_amp); 
-    } else if(code[s]){
-      add_tone(output,s*1000,s*1000+500,100,marker_high_amp);	 // 500 ms = 1 bit
-      add_tone(output,s*1000+500,s*1000+1000,100,marker_low_amp);
-    } else {
-      add_tone(output,s*1000,s*1000+200,100,marker_high_amp);	 // 200 ms = 0 bit
-      add_tone(output,s*1000+200,s*1000+1000,100,marker_low_amp);
+  if(!NoVoice){
+    char *message = NULL;
+    int asr = asprintf(&message,"At the tone, %d %s %d %s Coordinated Universal Time",
+		       nexthour,nexthour == 1 ? "hour" : "hours",
+		       nextminute,nextminute == 1 ? "minute" : "minutes");
+    if(asr != -1 && message){
+      if(!wwvh)
+	announce_text(output,message,52500,0); // WWV: male voice at 52.5 seconds
+      else
+	announce_text(output,message,45000,1); // WWVH: female voice at 45 seconds
+      free(message); message = NULL;
     }
   }
-  
+  if(code != NULL){
+    // Modulate time code onto 100 Hz subcarrier
+    for(int s=1; s<length; s++){ // No subcarrier during second 0 (minute/hour beep)
+      if((s % 10) == 9){
+	add_tone(output,s*1000,s*1000+800,100,marker_high_amp);	 // 800 ms position markers on seconds 9, 19, 29, ...
+	add_tone(output,s*1000+800,s*1000+1000,100,marker_low_amp);
+      } else if(code[s]){
+	add_tone(output,s*1000,s*1000+500,100,marker_high_amp);	 // 500 ms = 1 bit
+      add_tone(output,s*1000+500,s*1000+1000,100,marker_low_amp);
+      } else {
+	add_tone(output,s*1000,s*1000+200,100,marker_high_amp);	 // 200 ms = 0 bit
+	add_tone(output,s*1000+200,s*1000+1000,100,marker_low_amp);
+      }
+    }
+  }
   // Pre-empt with minute/hour beep and guard interval
   overlay_tone(output,0,800,minute == 0 ? hourbeep : tickfreq,tick_amp);
   overlay_silence(output,800,1000);
-  
+
   // Pre-empt with second ticks and guard interval
   for(int s=1; s<length; s++){
     if(s != 29 && s < 59){
@@ -564,7 +863,7 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
     if((dut1 > 0 && s >= 1 && s <= dut1)
        || (-dut1 > 0 && s >= 9 && s <= 8-dut1)){
       overlay_tone(output,1000*s+100,1000*s+105,tickfreq,tick_amp); // 5 ms second tick at 100 ms
-    }	  
+    }
   }
 }
 
@@ -621,7 +920,7 @@ void cleanup(void){
 
 
 // Return length of output queue
-int qlen(){
+int qlen(void){
   int len = 0;
   pthread_mutex_lock(&Output_mutex);
   for(struct qentry *q = Queue;q != NULL;q = q->next)
@@ -629,246 +928,3 @@ int qlen(){
   pthread_mutex_unlock(&Output_mutex);
   return len;
 }
-
-int main(int argc,char *argv[]){
-
-  int dut1 = 0;
-  bool manual_time = false;
-  int devnum = -1;
-
-  // Use current computer clock time as default
-  struct timeval start_time;
-  gettimeofday(&start_time,NULL);
-  struct tm const * const tm = gmtime(&start_time.tv_sec);
-  int sec = tm->tm_sec;
-  int minute = tm->tm_min;
-  int hour = tm->tm_hour;
-  int day = tm->tm_mday;
-  int month = tm->tm_mon + 1;
-  int year = tm->tm_year + 1900;
-  setlocale(LC_ALL,getenv("LANG"));
-
-#if 0
-  for(int y=2007;y < 2100;y++){
-    fprintf(stderr,"year %d dst start %d\n",y,dst_start_doy(y));
-  }
-#endif
-
-  int c;
-  // Read and process command line arguments
-  while((c = getopt(argc,argv,"HY:M:D:h:m:s:u:r:LNvn:")) != EOF){
-    switch(c){
-    case 'n':
-      devnum = strtol(optarg,NULL,0);
-      break;
-    case 'v':
-      Verbose = true;
-      break;
-    case 'r':
-      Samprate = strtol(optarg,NULL,0); // Try not to change this, may not work
-      break;
-    case 'H': // Simulate WWVH, otherwise WWV
-      WWVH = true;
-      break;
-    case 'u': // UT1 offset in tenths of a second, +/- 7
-      dut1 = strtol(optarg,NULL,0);
-      break;
-    case 'Y': // Manual year setting
-      year = strtol(optarg,NULL,0);
-      manual_time = true;
-      break;
-    case 'M': // Manual month setting
-      month = strtol(optarg,NULL,0);
-      manual_time = true;
-      break;
-    case 'D': // Manual day setting
-      day = strtol(optarg,NULL,0);
-      manual_time = true;
-      break;
-    case 'h': // Manual hour setting
-      hour = strtol(optarg,NULL,0);
-      manual_time = true;
-      break;
-    case 'm': // Manual minute setting
-      minute = strtol(optarg,NULL,0);
-      manual_time = true;
-      break;
-    case 's': // Manual second setting
-      sec = strtol(optarg,NULL,0);
-      manual_time = true;
-      break;
-    case 'L':
-      Positive_leap_second_pending = true; // Positive leap second at end of current month
-      break;
-    case 'N':
-      Negative_leap_second_pending = true;  // Leap second at end of current month
-      break;
-    case '?':
-      fprintf(stderr,"Usage: %s [-v] [-r samprate] [-H] [-u ut1offset] [-Y year] [-M month] [-D day] [-h hour] [-m min] [-s sec] [-L|-N]\n",argv[0]);
-      fprintf(stderr,"Default sample rate: 48 kHz\n");
-      fprintf(stderr,"By default uses current system time; Use -Y/-M/-D/-h/-m/-s to override for testing, e.g., of leap seconds\n");
-      fprintf(stderr,"-v turns on verbose reporting. -H selects the WWVH format; default is WWV\n");
-      fprintf(stderr,"-u specifies current UT1-UTC offset in tenths of a second, must be between -7 and +7\n");
-      fprintf(stderr,"-L introduces a positive leap second at the end of June or December, whichever comes first\n");
-      fprintf(stderr,"-N introduces a negative leap second at the end of June or December, whichever comes first. Only one of -L and -N can be given\n");
-
-      exit(1);
-	      
-    }	
-  }
-  if(isatty(fileno(stdout))){
-#ifdef USE_PORTAUDIO
-    // No output redirection, so use portaudio to write directly to audio hardware with "precise" (?) timing
-    Pa_Initialize();
-    PaDeviceIndex dev = Pa_GetDefaultOutputDevice();
-    if(devnum != -1)
-      dev = devnum;
-    
-    PaStreamParameters param;
-    param.device = dev;
-    param.channelCount = 1;
-    param.sampleFormat = paInt16;
-    param.suggestedLatency = .02; // Don't make too small
-    param.hostApiSpecificStreamInfo = NULL;
-
-    int err = Pa_OpenStream(&Stream,NULL,&param,(double)Samprate,0,0,NULL,NULL);
-    if(err != paNoError){
-      fprintf(stderr,"Pa_OpenStream failed\n");
-      exit(1);
-    }
-    atexit(cleanup);
-#else
-    fprintf(stderr,"Won't send PCM to a terminal (direct mode not compiled in)\n");
-    exit(1);
-#endif    
-
-  }
-  if(year < 2007)
-    fprintf(stderr,"Warning: DST rules prior to %d not implemented; DST bits = 0\n",year);    // Punt
-
-  if(Positive_leap_second_pending && Negative_leap_second_pending){
-    fprintf(stderr,"Positive and negative leap seconds can't both be pending! Both cancelled\n");
-    Positive_leap_second_pending = Negative_leap_second_pending = false;
-  }
-
-  if(dut1 > 7 || dut1 < -7){
-    fprintf(stderr,"ut1 offset %d out of range, limited to -7 to +7 tenths\n",dut1);
-    dut1 = 0;
-  }
-  if(Positive_leap_second_pending && dut1 > -3){
-    fprintf(stderr,"Postive leap second cancelled since dut1 > -0.3 sec\n");
-    Positive_leap_second_pending = false;
-  } else if(Negative_leap_second_pending && dut1 < 3){
-    fprintf(stderr,"Negative leap second cancelled since dut1 < +0.3 sec\n");
-    Negative_leap_second_pending = false;
-  }
-
-  Samprate_ms = Samprate/1000; // Samples per ms
-  bool startup = true;
-  // Set up output thread to write asynchronously
-  pthread_create(&Output_thread,NULL,output_thread,NULL);
-
-  while(1){
-    int length = 60;    // Default length 60 seconds
-    if((month == 6 || month == 12) && hour == 23 && minute == 59){
-      if(Positive_leap_second_pending){
-	length = 61; // This minute ends with a leap second!
-      } else if(Negative_leap_second_pending){
-	length = 59; // Negative leap second
-      }
-    }
-
-    struct qentry *qe = calloc(1,sizeof(*qe));
-    assert(qe != NULL);
-    qe->length = length * Samprate;
-    qe->buffer = calloc(sizeof(*qe->buffer),qe->length);
-    assert(qe->buffer != NULL);
-
-    // Generate timecode
-    uint8_t code[61]; // one extra for a possible leap second
-    bool leap_pending = (Positive_leap_second_pending || Negative_leap_second_pending);
-    maketimecode(code,dut1,leap_pending,year,month,day,hour,minute);
-    
-    // Optionally dump timecode
-    if(Verbose){
-      fprintf(stderr,"%d/%d/%d %02d:%02d\n",month,day,year,hour,minute);
-      decode_timecode(code,length);
-    }
-
-    // Build a minute of audio
-    makeminute(qe->buffer,length,WWVH,code,dut1,hour,minute);
-
-    if(!manual_time && startup){
-      // Buffers are constructed starting on the minute, so compute
-      // how much of it to skip in the first one.
-      // Speech synthesis can be slow, so look at the clock again
-      // Don't do with this when time is manually set
-      struct timeval now;
-      gettimeofday(&now,NULL);
-      struct tm const * const tm = gmtime(&now.tv_sec);
-      if(minute != tm->tm_min){
-	// We're already into the next minute? Speech synthesis can be slow.
-	// Discard this first one and continue with the next minute
-	// (What if we start during a leap second? geez...it never ends...)
-	fprintf(stderr,"Discarding first minute\n");
-	free(qe->buffer);
-	free(qe);
-	goto next_minute;
-      } else {
-	// Calculate starting offset into first buffer
-	qe->offset = Samprate * ((long long)1000000 * tm->tm_sec + now.tv_usec) /  1000000;
-	assert(qe->offset < Samprate * 60);
-	startup = false;
-      }
-    }
-
-    // Append to queue, wake output
-    pthread_mutex_lock(&Output_mutex);
-    struct qentry *last = NULL;
-    for(struct qentry *q = Queue;q != NULL;last = q,q = q->next)
-      ;
-
-    if(last)
-      last->next = qe;
-    else 
-      Queue = qe; // First on empty queue
-
-    pthread_cond_signal(&Output_cond);
-    pthread_mutex_unlock(&Output_mutex);
-
-    // Wait for queue to drain a little
-    while(qlen() >= 2){
-      useconds_t interval = 30000000; // Pause 30 sec
-      usleep(interval);
-    }
-  next_minute:;
-    if(length == 61){
-      // Leap second just occurred in this last minute
-      Positive_leap_second_pending = false;
-      dut1 += 10;
-    } else if(length == 59){
-      Negative_leap_second_pending = false;
-      dut1 -= 10;
-    }
-    // Advance to next minute
-    sec = 0;
-    if(++minute > 59){
-      // New hour
-      minute = 0;
-      if(++hour > 23){
-	// New day
-	hour = 0;
-	if(++day > ((month == 2 && is_leap_year(year))? 29 : Days_in_month[month])){
-	  // New month
-	  day = 1;
-	  if(++month > 12){
-	    // New year
-	    month = 1;
-	    ++year;
-	  }
-	}
-      }
-    }
-  }
-}
-
