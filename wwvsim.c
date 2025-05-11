@@ -19,6 +19,7 @@
 // Minor tweaks 16 Mar 2023
 // Major rewrite 30 Aug 2023 to use a FIFO queue feeding a separate output thread
 // Better able to handle slow speech synthesizers
+// 11 May 2025: Cleanups, --no-tone, --no-voice, --no-code options
 
 #define USE_PORTAUDIO 1 // Enable direct on-time output to sound device with portaudio when stdout is a terminal
 #define PIPER 1 // Piper TTS
@@ -397,6 +398,7 @@ int main(int argc,char *argv[]){
       }
     }
   }
+  exit(0);
 }
 
 
@@ -433,14 +435,14 @@ int announce_audio_file(int16_t *output, char const *file, int startms){
   if(startms < 0 || startms >= 61000)
     return -1;
 
-  int r = -1;
-
   FILE *fp;
   if((fp = fopen(file,"r")) != NULL){
-    r = fread(output+startms*Samprate_ms,sizeof(*output),Samprate_ms*(61000-startms),fp);
+    int ret = fread(output+startms*Samprate_ms,sizeof(*output),Samprate_ms*(61000-startms),fp);
     fclose(fp);
+    if(ret == Samprate_ms * (61000 - startms)) // Good read
+      return 0;
   }
-  return r;
+  return -1;
 }
 
 // Synthesize speech from a text file and insert into audio output at specified offset
@@ -500,6 +502,9 @@ int announce_text_file(int16_t *output,char const *file, int startms, bool femal
   if(Verbose){
     fprintf(stderr,"Executing \"%s\" to speak:\n",command);
     FILE *in = fopen(fullname,"r");
+    if(in == NULL)
+      goto done;
+
     int c;
     while((c = fgetc(in)) != EOF)
       fputc(c,stderr);
@@ -508,9 +513,11 @@ int announce_text_file(int16_t *output,char const *file, int startms, bool femal
     fclose(in);
   }
 
-  system(command);
-
-  r = announce_audio_file(output,tempfile_raw, startms);
+  r = system(command);
+  if(r == 0)
+    r = announce_audio_file(output,tempfile_raw, startms);
+  else
+    fprintf(stderr,"system(%s) returned %d\n",command,r);
 
  done:; // Go here directly on errors
   // Clean up
