@@ -174,7 +174,7 @@ int main(int argc,char *argv[]){
       NoVoice = true;
       break;
     case 't':
-      NoTone = true; // Nicht diese tone!
+      NoTone = true; // Nicht diese Tone!
       break;
     case 'n':
       devnum = strtol(optarg,NULL,0);
@@ -307,7 +307,7 @@ int main(int argc,char *argv[]){
 
     struct qentry *qe = calloc(1,sizeof(*qe));
     assert(qe != NULL);
-    qe->length = length * Samprate;
+    qe->length = length * Samprate; // Worst case
     qe->buffer = calloc(sizeof(*qe->buffer),qe->length);
     assert(qe->buffer != NULL);
 
@@ -431,23 +431,101 @@ complex double const csincos(double x){
 }
 
 // Insert PCM audio file into audio output at specified offset
-int announce_audio_file(int16_t *output, char const *file, int startms){
+int announce_audio_file(int16_t *output, int length, char const *file, int startms){
   if(startms < 0 || startms >= 61000)
     return -1;
 
   FILE *fp;
   if((fp = fopen(file,"r")) != NULL){
-    int ret = fread(output+startms*Samprate_ms,sizeof(*output),Samprate_ms*(61000-startms),fp);
+    int ret = fread(output+startms*Samprate_ms,
+		    sizeof(*output),
+		    Samprate_ms*(length-startms),
+		    fp);
     fclose(fp);
-    if(ret == Samprate_ms * (61000 - startms)) // Good read
+    if(ret > 0) // Good read
       return 0;
   }
   return -1;
 }
 
+#if 0
 // Synthesize speech from a text file and insert into audio output at specified offset
 // Use female = true for WWVH, false for WWV
-int announce_text_file(int16_t *output,char const *file, int startms, bool female){
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdbool.h>
+#include <string.h>
+#include <errno.h>
+
+int announce_text(int16_t *output, int length, const char *text, int startms, bool female) {
+  FILE *fp = NULL;
+  char command[1024] = {0};
+  const char *voice = NULL;
+
+    if (access("/usr/local/bin/piper", X_OK) == 0) {
+        // Piper
+        voice = female ? "en_US-kathleen-low.onnx" : "en_US-ryan-medium.onnx";
+        snprintf(command, sizeof(command),
+            "/usr/local/bin/piper --model /usr/local/lib/piper/%s --output_file - <<< \"%s\" | "
+            "sox -t wav - -t raw -r 48000 -c 1 -b 16 -e signed-integer -",
+            voice, text);
+    }
+#ifdef __APPLE__
+    else if (access("/usr/bin/say", X_OK) == 0) {
+        // macOS 'say'
+        voice = female ? "Samantha" : "Alex";
+        snprintf(command, sizeof(command),
+            "say -v %s --data-format=LEI16@48000 -o - \"%s\" 2>/dev/null",
+            voice, text);
+    }
+#endif
+    else if (access("/usr/bin/espeak", X_OK) == 0 || access("/usr/bin/espeak-ng", X_OK) == 0) {
+        const char *espeak = access("/usr/bin/espeak-ng", X_OK) == 0 ? "/usr/bin/espeak-ng" : "/usr/bin/espeak";
+        voice = female ? "en-us+f3" : "en-us";
+        snprintf(command, sizeof(command),
+            "%s -v %s -s 175 -a 70 --stdout \"%s\" | "
+            "sox -t wav - -t raw -r 48000 -c 1 -b 16 -e signed-integer -",
+            espeak, voice, text);
+    } else {
+        fprintf(stderr, "No TTS engine available\n");
+        return -1;
+    }
+    fprintf(stderr,"command = %s\n",command);
+    if ((fp = popen(command, "r")) == NULL) {
+        perror("popen");
+        return -1;
+    }
+    fprintf(stderr,"fread(%p,%d,%d,%p\n",output + startms * Samprate_ms,
+		    sizeof(*output),
+		    Samprate_ms*(1000*length - startms),
+		    fp);
+    size_t samples_read = fread(output+startms*Samprate_ms,
+		    sizeof(*output),
+		    Samprate_ms*(1000*length - startms),
+		    fp);
+    pclose(fp);
+    fprintf(stderr,"announce_text(output=%p,length=%d,text=%s,startms=%d,female=%d)\n",
+	    output,length,text, startms,female);
+    fprintf(stderr,"samples: %lu\n",(unsigned long)samples_read);
+    return samples_read;
+}
+int announce_text_file(int16_t *output,int length,char const *file, int startms, bool female){
+  char text_buffer[8192]; // Pick a better number
+  FILE *fp = fopen(file,"r");
+  if(fp == NULL)
+    return -1;
+  size_t bytes = fread(text_buffer,1,sizeof text_buffer,fp);
+  fclose(fp);
+  if(bytes <= 0)
+    return -1;
+  return announce_text(output,length,text_buffer,startms,female);
+}
+
+# else 
+
+
+int announce_text_file(int16_t *output,int length,char const *file, int startms, bool female){
   int r = -1;
 
   char tempfile_raw[L_tmpnam+1];
@@ -515,7 +593,7 @@ int announce_text_file(int16_t *output,char const *file, int startms, bool femal
 
   r = system(command);
   if(r == 0)
-    r = announce_audio_file(output,tempfile_raw, startms);
+    r = announce_audio_file(output,length,tempfile_raw, startms);
   else
     fprintf(stderr,"system(%s) returned %d\n",command,r);
 
@@ -533,8 +611,9 @@ int announce_text_file(int16_t *output,char const *file, int startms, bool femal
   return r;
 }
 
+
 // Synthesize a text announcement and insert into output buffer
-int announce_text(int16_t *output,char const *message,int startms,int female){
+int announce_text(int16_t *output,int length, char const *message,int startms,int female){
 
   char tempfile_txt[L_tmpnam+1];
   memset(tempfile_txt,0,sizeof(tempfile_txt));
@@ -546,11 +625,11 @@ int announce_text(int16_t *output,char const *message,int startms,int female){
     return -1;
   fputs(message,fp);
   fclose(fp);
-  int r = announce_text_file(output,tempfile_txt,startms,female);
+  int r = announce_text_file(output,length, tempfile_txt,startms,female);
   unlink(tempfile_txt);
   return r;
 }
-
+#endif
 
 // Overlay a tone with frequency 'freq' in audio buffer, overwriting whatever was there
 // starting at 'startms' within the minute and stopping one sample before 'stopms'.
@@ -763,7 +842,7 @@ void decode_timecode(uint8_t *code,int length){
 }
 
 // Insert tone or announcement into seconds 1-44
-void gen_tone_or_announcement(int16_t *output,bool wwvh,int hour,int minute){
+void gen_tone_or_announcement(int16_t *output,int length,bool wwvh,int hour,int minute){
   const double tone_amp = pow(10.,-6.0/20.); // -6 dB
 
   // A raw audio file pre-empts everything else
@@ -772,11 +851,11 @@ void gen_tone_or_announcement(int16_t *output,bool wwvh,int hour,int minute){
 
   if(!NoVoice && asprintf(&rawfilename,"%s/%s/%d.raw",Libdir,wwvh ? "wwvh" : "wwv",minute)
      && access(rawfilename,R_OK) == 0){
-    announce_audio_file(output,rawfilename,1000);
+    announce_audio_file(output,length,rawfilename,1000);
     goto done;
   } else if(!NoVoice && asprintf(&textfilename,"%s/%s/%d.txt",Libdir,wwvh ? "wwvh" : "wwv",minute)
 	    && access(textfilename,R_OK) == 0){
-    announce_text_file(output,textfilename,1000,wwvh);
+    announce_text_file(output,length,textfilename,1000,wwvh);
     goto done;
   } else if (!NoTone){
     // Otherwise generate a tone, unless silent
@@ -815,7 +894,7 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
 
   // Build a minute of audio
   memset(output,0,length*Samprate*sizeof(*output)); // Clear previous audio
-  gen_tone_or_announcement(output,wwvh,hour,minute);
+  gen_tone_or_announcement(output,length,wwvh,hour,minute);
 
   // Insert minute announcement
   // What are the next hour and minute?
@@ -833,9 +912,9 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
 		       nextminute,nextminute == 1 ? "minute" : "minutes");
     if(asr != -1 && message){
       if(!wwvh)
-	announce_text(output,message,52500,0); // WWV: male voice at 52.5 seconds
+	announce_text(output,length,message,52500,0); // WWV: male voice at 52.5 seconds
       else
-	announce_text(output,message,45000,1); // WWVH: female voice at 45 seconds
+	announce_text(output,length,message,45000,1); // WWVH: female voice at 45 seconds
       free(message); message = NULL;
     }
   }
