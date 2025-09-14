@@ -20,6 +20,7 @@
 // Major rewrite 30 Aug 2023 to use a FIFO queue feeding a separate output thread
 // Better able to handle slow speech synthesizers
 // 11 May 2025: Cleanups, --no-tone, --no-voice, --no-code options
+// 14 Sep 2025: add short options to Optstring (N5TNL)
 
 #define USE_PORTAUDIO 1 // Enable direct on-time output to sound device with portaudio when stdout is a terminal
 #define PIPER 1 // Piper TTS
@@ -116,7 +117,7 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
 int qlen(void);
 bool const is_leap_year(int y);
 
-static char const Optstring[] = "HY:M:D:h:m:s:u:r:LNvn:";
+static char const Optstring[] = "HY:M:D:h:m:s:u:r:LNvn:Pdtc";
 static const struct option Options[] = {
   {"device", required_argument, NULL, 'n' },
   {"verbose", no_argument, NULL, 'v'},
