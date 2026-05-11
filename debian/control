@@ -10,7 +10,7 @@ Homepage: <insert the upstream URL, if relevant>
 Vcs-Git: https://github.com/ka9q/wwvsim
 
 Package: wwvsim
-Architecture: all
+Architecture: any
 Depends:
  ${misc:Depends},
 Description: WWV/WWVH emulator
