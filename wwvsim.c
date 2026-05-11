@@ -639,15 +639,21 @@ int announce_text(int16_t *output,int length, char const *message,int startms,in
   char tempfile_txt[L_tmpnam+1];
   memset(tempfile_txt,0,sizeof(tempfile_txt));
   strncpy(tempfile_txt,"/tmp/stextXXXXXX.txt",sizeof(tempfile_txt));
-  mkstemps(tempfile_txt,4);
-
-  FILE *fp;
-  if ((fp = fopen(tempfile_txt,"w")) == NULL)
+  int fd = mkstemps(tempfile_txt,4);
+  if(fd == -1){
+    fprintf(stderr,"mkstemps(%s): %s\n",tempfile_txt, strerror(errno));
     return -1;
-  fputs(message,fp);
-  fclose(fp);
+  }
+  r = write(fd,message, strlen(message));
+  if(r < 0){
+    fprintf(stderr,"write(%s): %s\n",tempfile_txt, strerror(errno));
+    unlink(tempfile_txt);
+    close(fd);
+    return -1;
+  }
   int r = announce_text_file(output,length, tempfile_txt,startms,female);
   unlink(tempfile_txt);
+  close(fd);
   return r;
 }
 #endif
