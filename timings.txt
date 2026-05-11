@@ -1,0 +1,7 @@
+WWV:
+52.5 to 53.127 seconds: "At the tone"
+53.2 to 53.6 seconds: "Twenty"
+53.6 to 54.2 seconds "Hours"
+54.5 to 55.2 seconds "Thirty six"
+55.2 to 55.6 seconds "minutes"
+56.4 to 58.5 seconds "coordinated universal time"
