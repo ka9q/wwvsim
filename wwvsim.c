@@ -545,17 +545,6 @@ int announce_text_file(int16_t *output,int length,char const *file, int startms,
 int announce_text_file(int16_t *output,int length,char const *file, int startms, bool female){
   int r = -1;
 
-  char tempfile_raw[L_tmpnam+1];
-  memset(tempfile_raw,0,sizeof(tempfile_raw));
-  strncpy(tempfile_raw,"/tmp/srawXXXXXX.raw",sizeof(tempfile_raw));
-  mkstemps(tempfile_raw,4);
-
-#if defined(__APPLE__) || defined(PIPER)
-  char tempfile_wav[L_tmpnam+1];
-  memset(tempfile_wav,0,sizeof(tempfile_wav));
-  strncpy(tempfile_wav,"/tmp/swavXXXXXX.wav",sizeof(tempfile_wav));
-  mkstemps(tempfile_wav,4);
-#endif
 
   int asr = -1;
   char *fullname = NULL;
@@ -576,7 +565,19 @@ int announce_text_file(int16_t *output,int length,char const *file, int startms,
 
   char *command = NULL;
 
+  int rawfd = -1;
+  char tempfile_raw[L_tmpnam+1];
+  memset(tempfile_raw,0,sizeof(tempfile_raw));
+  strncpy(tempfile_raw,"/tmp/srawXXXXXX.raw",sizeof(tempfile_raw));
+  rawfd = mkstemps(tempfile_raw,4);
+
 #ifdef __APPLE__
+  int wavfd = -1;
+  char tempfile_wav[L_tmpnam+1];
+  memset(tempfile_wav,0,sizeof(tempfile_wav));
+  strncpy(tempfile_wav,"/tmp/swavXXXXXX.wav",sizeof(tempfile_wav));
+  wavfd = mkstemps(tempfile_wav,4);
+
   voice = female ? "Samantha" : "Alex";
   asr = asprintf(&command,"say -v %s --output-file=%s --data-format=LEI16@48000 -f %s; sox %s -t raw -r 48000 -c 1 -b 16 -e signed-integer %s",
 	   voice,tempfile_wav,fullname,tempfile_wav,tempfile_raw);
@@ -607,7 +608,6 @@ int announce_text_file(int16_t *output,int length,char const *file, int startms,
     fflush(stderr);
     fclose(in);
   }
-
   r = system(command);
   if(r == 0)
     r = announce_audio_file(output,length,tempfile_raw, startms);
@@ -617,9 +617,13 @@ int announce_text_file(int16_t *output,int length,char const *file, int startms,
  done:; // Go here directly on errors
   // Clean up
   unlink(tempfile_raw);
-#if defined(__APPLE__) || defined(PIPER)
+#if defined(__APPLE__)
+  if(wavfd != -1)
+    close(wavfd);
   unlink(tempfile_wav);
 #endif
+  if(rawfd != -1)
+    close(rawfd);
 
   if(command)
     free(command);
