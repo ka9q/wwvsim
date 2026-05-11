@@ -45,6 +45,7 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <getopt.h>
+#include <errno.h>
 
 #ifdef USE_PORTAUDIO
 #include <portaudio.h>
@@ -644,14 +645,14 @@ int announce_text(int16_t *output,int length, char const *message,int startms,in
     fprintf(stderr,"mkstemps(%s): %s\n",tempfile_txt, strerror(errno));
     return -1;
   }
-  r = write(fd,message, strlen(message));
+  int  r = write(fd,message, strlen(message));
   if(r < 0){
     fprintf(stderr,"write(%s): %s\n",tempfile_txt, strerror(errno));
     unlink(tempfile_txt);
     close(fd);
     return -1;
   }
-  int r = announce_text_file(output,length, tempfile_txt,startms,female);
+  r = announce_text_file(output,length, tempfile_txt,startms,female);
   unlink(tempfile_txt);
   close(fd);
   return r;
