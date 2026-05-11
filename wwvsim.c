@@ -915,8 +915,8 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
 	announce_text(output,length,message,52500,0); // WWV: male voice at 52.5 seconds
       else
 	announce_text(output,length,message,45000,1); // WWVH: female voice at 45 seconds
-      free(message); message = NULL;
     }
+    free(message);
   }
   if(code != NULL){
     // Modulate time code onto 100 Hz subcarrier
