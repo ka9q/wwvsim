@@ -31,7 +31,6 @@ install: wwvsim
 	ln $(DESTDIR)$(wwv_dir)/test.raw $(DESTDIR)$(wwvh_dir)
 	(cd $(DESTDIR)$(wwv_dir); ln wwv-id.raw 0.raw; ln wwv-id.raw 30.raw; ln wwv-id.txt 0.txt; ln wwv-id.txt 30.txt; ln test.raw 8.raw)
 	(cd $(DESTDIR)$(wwvh_dir); ln wwvh-id.raw 0.raw; ln wwvh-id.raw 30.raw; ln wwvh-id.txt 0.txt; ln wwvh-id.txt 30.txt; ln test.raw 48.raw)
-	install -d -m 0755 $(DESTDIR)/
 
 wwvsim: wwvsim.o
 	$(CC) -g -o $@ $^ -lportaudio -lm -lpthread
