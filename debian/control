@@ -1,18 +1,20 @@
 Source: wwvsim
-Section: unknown
+Section: hamradio
 Priority: optional
 Maintainer: Phil Karn <karn@ka9q.net>
 Rules-Requires-Root: no
-Build-Depends:
- debhelper-compat (= 13),
+Build-Depends: debhelper-compat (= 13), libbsd-dev, portaudio-19
 Standards-Version: 4.7.2
 Homepage: <insert the upstream URL, if relevant>
 #Vcs-Browser: https://salsa.debian.org/debian/wwvsim
-#Vcs-Git: https://salsa.debian.org/debian/wwvsim.git
+Vcs-Git: https://github.com/ka9q/wwvsim
 
 Package: wwvsim
 Architecture: all
 Depends:
  ${misc:Depends},
-Description: <insert up to 60 chars description>
- <Insert long description, indented with spaces.>
+Description: WWV/WWVH emulator
+ Generates complete WWV or WWVH audio program: audio tones, second ticks, UT1 offset, minute beeps, 100 Hz timecode,
+ half-hourly announcements but NOT minute announcements, which currently use a local speech synthesizer
+ Includes Hamsci test signal at :08 on WWV, :48 on WWVH
+ Support for special announcements
