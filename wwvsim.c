@@ -20,6 +20,8 @@
 // Major rewrite 30 Aug 2023 to use a FIFO queue feeding a separate output thread
 // Better able to handle slow speech synthesizers
 // 11 May 2025: Cleanups, --no-tone, --no-voice, --no-code options
+// 14 Sep 2025: add short options to Optstring (N5TNL)
+// 14 Sep 2025: add -1 option to exit after one minute of output (manual time mode only) (N5TNL)
 
 #define USE_PORTAUDIO 1 // Enable direct on-time output to sound device with portaudio when stdout is a terminal
 #define PIPER 1 // Piper TTS
@@ -108,6 +110,8 @@ void *output_thread(void *p);
 pthread_mutex_t Output_mutex; // Protect queue
 pthread_cond_t Output_cond;
 int Samprate_ms;      // Samples per millisecond - sampling rates not divisible by 1000 may break
+bool one_minute_mode;
+bool manual_time;
 
 void cleanup(void);
 void maketimecode(uint8_t *code,int dut1,bool leap_pending,int year,int month,int day,int hour,int minute);
@@ -116,7 +120,7 @@ void makeminute(int16_t *output,int length,bool wwvh,uint8_t const *code,int dut
 int qlen(void);
 bool const is_leap_year(int y);
 
-static char const Optstring[] = "HY:M:D:h:m:s:u:r:LNvn:";
+static char const Optstring[] = "HY:M:D:h:m:s:u:r:LNvn:Pdtc1";
 static const struct option Options[] = {
   {"device", required_argument, NULL, 'n' },
   {"verbose", no_argument, NULL, 'v'},
@@ -135,6 +139,7 @@ static const struct option Options[] = {
   {"no-voice", no_argument, NULL, 'd'},
   {"no-tone", no_argument, NULL, 't'},
   {"no-code", no_argument, NULL, 'c'},
+  {"1-minute", no_argument, NULL, '1'},
   { NULL, no_argument, NULL, 0},
 };
 
@@ -142,7 +147,6 @@ static const struct option Options[] = {
 int main(int argc,char *argv[]){
 
   int dut1 = 0;
-  bool manual_time = false;
   int devnum = -1;
 
   // Use current computer clock time as default
@@ -221,6 +225,9 @@ int main(int argc,char *argv[]){
     case 'N':
       Negative_leap_second_pending = true;  // Leap second at end of current month
       break;
+    case '1':
+      one_minute_mode = true;
+      break;
     case '?':
       fprintf(stderr,"Usage: %s [options]\n",argv[0]);
       fprintf(stderr,"[-n | --device <number>] select output device\n");
@@ -239,6 +246,7 @@ int main(int argc,char *argv[]){
       fprintf(stderr,"[-t | --no-tone] suppress 440, 500 and 600 Hz tones\n");
       fprintf(stderr,"[-d | --no-voice] suppress all voice announcements\n");
       fprintf(stderr,"[-c | --no-code] suppress 100 Hz timecode\n");
+      fprintf(stderr,"[-1 | --1-minute] output 1 minute of samples (manual time mode only)\n");
       exit(1);
 
     }
@@ -363,6 +371,15 @@ int main(int argc,char *argv[]){
 
     pthread_cond_signal(&Output_cond);
     pthread_mutex_unlock(&Output_mutex);
+
+    if (one_minute_mode && manual_time){
+      // manual time mode and only output one minute, so wait for the output thread to exit
+      if (pthread_join(Output_thread,NULL) != 0) {
+        perror("pthread_join() failed");
+        return 1;
+      }
+      return 0;
+    }
 
     // Wait for queue to drain a little
     while(qlen() >= 2){
@@ -988,6 +1005,8 @@ void *output_thread(void *p){
     } else {
       fwrite(qe->buffer + qe->offset,sizeof(int16_t),qe->length - qe->offset,stdout);
       fflush(stdout);
+      if (one_minute_mode && manual_time)
+        pthread_exit(NULL);
     }
 #else
     fwrite(qe->buffer + qe->offset,sizeof(int16_t),qe->length - qe->offset,stdout);
