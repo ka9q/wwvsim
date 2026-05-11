@@ -1,4 +1,5 @@
 prefix		?= /usr/local
+BUILD		?= release
 exec_prefix	?= $(prefix)
 bindir		?= $(exec_prefix)/bin
 datadir		?= $(prefix)/share
@@ -9,12 +10,28 @@ wwvh_dir	?= $(pkgdatadir)/wwvh
 incdir		?= $(prefix)/include
 docdir		?= $(datadir)/doc/wwvsim
 
-UNAME_S := $(shell uname -s)
-
 export prefix exec_prefix bindir
 export mandir wwv_dir wwvh_dir
 
-CFLAGS=-g -O3 -I $(incdir)
+LDLIBS += -lportaudio -lm -lpthread 
+
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S),Darwin)
+	CPPFLAGS += -I/opt/local/include
+	LDFLAGS  += -L/opt/local/lib
+else
+	LDLIBS += -lbsd
+endif
+
+ifeq ($(BUILD),debug)
+	DOPTS = -g -Og -fno-omit-frame-pointer
+else
+	DOPTS = -DNDEBUG=1 -O3
+endif
+
+
+CFLAGS=$(DOPTS) $(CPPFLAGS)
 
 all:	wwvsim
 
@@ -33,4 +50,4 @@ install: wwvsim
 	(cd $(DESTDIR)$(wwvh_dir); ln wwvh-id.raw 0.raw; ln wwvh-id.raw 30.raw; ln wwvh-id.txt 0.txt; ln wwvh-id.txt 30.txt; ln test.raw 48.raw)
 
 wwvsim: wwvsim.o
-	$(CC) -g -o $@ $^ -lportaudio -lm -lpthread
+	$(CC) -o $@ $^ $(LDFLAGS) $(LDLIBS)

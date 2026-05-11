@@ -16,7 +16,7 @@
 
 
 override_dh_auto_install:
-	dh_auto_install -- PREFIX=/usr prefix=/usr DESTDIR=$(CURDIR)/debian/tmp
+	dh_auto_install -- prefix=/usr DESTDIR=$(CURDIR)/debian/tmp
 
 %:
 	dh $@
