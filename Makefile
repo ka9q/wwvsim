@@ -50,7 +50,7 @@ clean:
 	done
 
 install: wwvsim
-	install -d -m 0755 $(DESTDIR)$(bindir)
+	install -d -m 0755 $(DESTDIR)$(bindir) $(DESTDIR)$(docdir)
 	install -d -m 0755 $(DESTDIR)$(wwv_dir) $(DESTDIR)$(wwv_dir)/minute $(DESTDIR)$(wwv_dir)/announce
 	install -d -m 0755 $(DESTDIR)$(wwvh_dir) $(DESTDIR)$(wwvh_dir)/minute $(DESTDIR)$(wwvh_dir)/announce
 	install -m 0644 NIST-250-67.pdf $(DESTDIR)$(docdir)
