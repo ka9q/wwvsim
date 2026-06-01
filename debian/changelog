@@ -1,4 +1,10 @@
-wwvsim (2.0-0) trixie; urgency=medium
+wwvsim (2.0-1-trixie1) trixie; urgency=medium
+
+  * Fix debian install script to get right target directory (argh!)
+
+ -- Phil Karn <karn@ka9q.net>  Mon, 01 Jun 2026 00:01:23 -0700
+
+wwvsim (2.0-0-trixie1) trixie; urgency=medium
 
   * Initial release.
   * Uses all original announcements (no speech synth needed)
