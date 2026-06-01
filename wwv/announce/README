@@ -1,0 +1,26 @@
+This directory contains drop-in voice announcements in raw format (no
+.wav header):
+
+bits/sample: 16
+channels: 1
+sample rate: 48 kHz
+encoding: signed-integer, linear PCM
+byte order: little endian
+
+Each file contains an announcement to be played starting at 1 second
+past the minute encoded in the file name. Eg, 0.raw is played during
+minute 0 of each hour, and 30.raw is played during minute 30 of each
+hour (this is the WWV station ID). When an announcement is played, it
+pre-empts any tone that would otherwise be generated during that
+minute.
+
+If no file is found for a given minute, either silence or a tone will
+be generated between seconds 1-45 depending on the default format for that
+station. Files may not be more than 44 seconds long.
+
+To save space, more than one minute label may link to a file. Eg, the
+0.raw and 30.raw path names both link to the file wwv-id.raw.
+
+File names not of the form #.raw or where # is a 1 or 2 digit decimal
+number, are ignored.
+
