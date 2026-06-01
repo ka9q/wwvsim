@@ -1,4 +1,5 @@
 usr/bin/*
 usr/share/wwvsim
+usr/share/wwvsim/wwv
+usr/share/wwvsim/wwvh
 usr/share/doc/wwvsim/NIST-250-67.pdf
-
