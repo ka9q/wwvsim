@@ -44,6 +44,7 @@
 #include <getopt.h>
 #include <errno.h>
 #include "timecode.h"
+#include "paths.h"
 
 #ifdef USE_PORTAUDIO
 #include <portaudio.h>
@@ -58,9 +59,6 @@ PaStream *Stream;
 #define pthread_setname(x) pthread_setname_np(pthread_self(),(x))
 #endif // ifdef __APPLE__
 
-
-#define WWV_DIR "/usr/local/share/wwvsim/wwv"
-#define WWVH_DIR "/usr/local/share/wwvsim/wwvh"
 
 int Samprate = 48000; // Samples per second - try to use this if possible
 bool WWVH = false; // WWV by default

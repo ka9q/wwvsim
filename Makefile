@@ -60,4 +60,14 @@ install: wwvsim
 wwvsim: wwvsim.o timecode.o
 	$(CC) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
+# handle quotes inside GIT summary messages, etc. Suggested by ChatGPT
+esc = sed 's/\\/\\\\/g; s/"/\\"/g'
+paths.h: Makefile
+	echo "make $@"
+	@printf '#ifndef _CONFIG_PATHS_H\n' > $@
+	@printf '#define _CONFIG_PATHS_H 1\n' >> $@
+	@printf '#define WWV_DIR "%s"\n' '$(wwvdir)' >> $@
+	@printf '#define WWVH_DIR "%s"\n' '$(wwvhdir)' >> $@
+	@printf '#endif\n' >> $@
+
 

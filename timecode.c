@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include "timecode.h"
+#include "paths.h"
 
 static void encode(uint8_t *code,int x);
 static int decode(uint8_t const *code);

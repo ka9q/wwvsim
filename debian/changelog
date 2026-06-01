@@ -1,6 +1,7 @@
-wwvsim (2.0-1-trixie1) trixie; urgency=medium
+wwvsim (2.0.1-0-trixie1) trixie; urgency=medium
 
   * Fix debian install script to get right target directory (argh!)
+  * create paths.h in makefile for library paths
 
  -- Phil Karn <karn@ka9q.net>  Mon, 01 Jun 2026 00:01:23 -0700
 
