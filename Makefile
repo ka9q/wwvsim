@@ -13,6 +13,8 @@ docdir		?= $(datadir)/doc/wwvsim
 export prefix exec_prefix bindir
 export mandir wwvdir wwvhdir
 
+CFILES = wwvsim.c timecode.c
+
 LDLIBS += -lportaudio -lm -lpthread 
 
 UNAME_S := $(shell uname -s)
@@ -44,7 +46,7 @@ clips: $(SUBDIRS)
 	done
 
 clean:
-	rm -f *.o wwvsim
+	rm -f *.o wwvsim paths.h
 	for d in $(SUBDIRS); do \
 		$(MAKE) -C $$d clean DESTDIR=$(DESTDIR) || exit $$?; \
 	done
@@ -70,4 +72,9 @@ paths.h: Makefile
 	@printf '#define WWVH_DIR "%s"\n' '$(wwvhdir)' >> $@
 	@printf '#endif\n' >> $@
 
+%.o: %.c paths.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+DEPS = $(CFILES:.c=.d) $(OBJS:.o=.d)
+-include $(DEPS)
 

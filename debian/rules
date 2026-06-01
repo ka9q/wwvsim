@@ -14,6 +14,10 @@
 # Package maintainers to append LDFLAGS.
 #export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 
+override_dh_auto_build:
+	@echo "MAKEFLAGS=$(MAKEFLAGS)"
+	@echo "DEB_BUILD_OPTIONS=$(DEB_BUILD_OPTIONS)"
+	$(MAKE) -j$(shell nproc) prefix=/usr
 
 override_dh_auto_install:
 	$(MAKE) install DESTDIR=$(CURDIR)/debian/tmp prefix=/usr

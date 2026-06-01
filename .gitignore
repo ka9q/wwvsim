@@ -2,3 +2,4 @@
 *.a
 *.o
 wwvsim
+paths.h
