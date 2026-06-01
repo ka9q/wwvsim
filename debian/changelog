@@ -1,6 +1,6 @@
-wwvsim (1.0-2) ka9q; urgency=medium
+wwvsim (2.0-0) trixie; urgency=medium
 
   * Initial release.
-  *  
+  * Uses all original announcements (no speech synth needed)
 
- -- Phil Karn <karn@ka9q.net>  Sun, 10 May 2026 19:35:47 -0700
+ -- Phil Karn <karn@ka9q.net>  Sun, 31 May 2026 23:21:07 -0700
