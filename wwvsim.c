@@ -1,4 +1,3 @@
-// $Id: wwvsim.c,v 1.13 2018/11/07 19:24:47 karn Exp $
 // WWV/WWVH simulator program. Generates their audio program as closely as possible
 // Even supports UT1 offsets and leap second insertion
 // Uses espeak synthesizer for speech announcements; needs a lot of work
@@ -516,18 +515,19 @@ void gen_tone_or_announcement(int16_t *output, int length, bool wwvh, int hour, 
   free(textfilename);
 }
 // Insert PCM audio file into audio output at specified offset
+// Note: length is in seconds, startms is in milliseconds
 int announce_audio_file(int16_t *output, int length, char const *file, int startms){
   if(startms < 0 || startms >= 61000)
     return -1;
   FILE *fp = fopen(file, "r");
   if(fp != NULL){
-    int ret = fread(output+startms*Samprate_ms,
+    size_t ret = fread(output+startms*Samprate_ms,
 		    sizeof *output,
-		    Samprate_ms*(length-startms),
+		    Samprate_ms*(1000*length-startms),
 		    fp);
-    fclose(fp);
-    if(ret <= 0)
+    if(ret == 0)
       fprintf(stderr, "Can't read %s: %s\n", file, strerror(errno));
+    fclose(fp);
     return ret;
   }
   return -1;

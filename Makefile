@@ -5,13 +5,13 @@ bindir		?= $(exec_prefix)/bin
 datadir		?= $(prefix)/share
 pkgdatadir	?= $(datadir)/wwvsim
 mandir		?= $(datadir)/man
-wwv_dir		?= $(pkgdatadir)/wwv
-wwvh_dir	?= $(pkgdatadir)/wwvh
+wwvdir		?= $(pkgdatadir)/wwv
+wwvhdir		?= $(pkgdatadir)/wwvh
 incdir		?= $(prefix)/include
 docdir		?= $(datadir)/doc/wwvsim
 
 export prefix exec_prefix bindir
-export mandir wwv_dir wwvh_dir
+export mandir wwvdir wwvhdir
 
 LDLIBS += -lportaudio -lm -lpthread 
 
@@ -51,8 +51,8 @@ clean:
 
 install: wwvsim
 	install -d -m 0755 $(DESTDIR)$(bindir) $(DESTDIR)$(docdir)
-	install -d -m 0755 $(DESTDIR)$(wwv_dir) $(DESTDIR)$(wwv_dir)/minute $(DESTDIR)$(wwv_dir)/announce
-	install -d -m 0755 $(DESTDIR)$(wwvh_dir) $(DESTDIR)$(wwvh_dir)/minute $(DESTDIR)$(wwvh_dir)/announce
+	install -d -m 0755 $(DESTDIR)$(wwvdir) $(DESTDIR)$(wwvdir)/minute $(DESTDIR)$(wwvdir)/announce
+	install -d -m 0755 $(DESTDIR)$(wwvhdir) $(DESTDIR)$(wwvhdir)/minute $(DESTDIR)$(wwvhdir)/announce
 	install -m 0644 NIST-250-67.pdf $(DESTDIR)$(docdir)
 	install -m 0755 wwvsim $(DESTDIR)$(bindir)
 	rsync -vaR wwv/*/*.raw wwvh/*/*.raw $(DESTDIR)$(pkgdatadir)
