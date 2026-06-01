@@ -30,24 +30,34 @@ else
 	DOPTS = -DNDEBUG=1 -O3
 endif
 
+SUBDIRS=wwv/minute wwvh/minute
 
 CFLAGS=$(DOPTS) $(CPPFLAGS)
 
-all:	wwvsim
+.PHONY: all clean install clips
+
+all:	wwvsim clips
+
+clips: $(SUBDIRS)
+	for d in $(SUBDIRS); do \
+		$(MAKE) -C $$d DESTDIR=$(DESTDIR) || exit $$?; \
+	done
 
 clean:
 	rm -f *.o wwvsim
+	for d in $(SUBDIRS); do \
+		$(MAKE) -C $$d clean DESTDIR=$(DESTDIR) || exit $$?; \
+	done
 
-install: wwvsim	
-	install -d -m 0755 $(DESTDIR)$(bindir) $(DESTDIR)$(wwv_dir) $(DESTDIR)$(wwvh_dir) $(DESTDIR)$(docdir)
+install: wwvsim
+	install -d -m 0755 $(DESTDIR)$(bindir)
+	install -d -m 0755 $(DESTDIR)$(wwv_dir) $(DESTDIR)$(wwv_dir)/minute $(DESTDIR)$(wwv_dir)/announce
+	install -d -m 0755 $(DESTDIR)$(wwvh_dir) $(DESTDIR)$(wwvh_dir)/minute $(DESTDIR)$(wwvh_dir)/announce
 	install -m 0644 NIST-250-67.pdf $(DESTDIR)$(docdir)
 	install -m 0755 wwvsim $(DESTDIR)$(bindir)
-	install -m 0644 wwv-id.txt wwv-id.raw $(DESTDIR)$(wwv_dir)
-	install -m 0644 wwvh-id.txt wwvh-id.raw $(DESTDIR)$(wwvh_dir)
-	install -m 0644 test.raw $(DESTDIR)$(wwv_dir)
-	ln $(DESTDIR)$(wwv_dir)/test.raw $(DESTDIR)$(wwvh_dir)
-	(cd $(DESTDIR)$(wwv_dir); ln wwv-id.raw 0.raw; ln wwv-id.raw 30.raw; ln wwv-id.txt 0.txt; ln wwv-id.txt 30.txt; ln test.raw 8.raw)
-	(cd $(DESTDIR)$(wwvh_dir); ln wwvh-id.raw 0.raw; ln wwvh-id.raw 30.raw; ln wwvh-id.txt 0.txt; ln wwvh-id.txt 30.txt; ln test.raw 48.raw)
+	rsync -vaR wwv/*/*.raw wwvh/*/*.raw $(DESTDIR)$(pkgdatadir)
 
-wwvsim: wwvsim.o
+wwvsim: wwvsim.o timecode.o
 	$(CC) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+
+
