@@ -1,3 +1,10 @@
+wwvsim (2.0.2-0-trixie1) trixie; urgency=medium
+
+  * update wwv tone schedule from observation - minutes 9 & 16 now tones
+  * Add minute 4 announcement
+
+ -- Phil Karn <karn@ka9q.net>  Thu, 04 Jun 2026 15:08:23 -0700
+
 wwvsim (2.0.1-0-trixie1) trixie; urgency=medium
 
   * Fix debian install script to get right target directory (argh!)
