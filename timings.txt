@@ -5,3 +5,14 @@ WWV:
 54.5 to 55.2 seconds "Thirty six"
 55.2 to 55.6 seconds "minutes"
 56.4 to 58.5 seconds "coordinated universal time"
+
+minute 0: station ID
+minute 4: announcement of hamsci signal in minute 8
+minute 8: hamsci test signal
+minute 18: space weather report
+minute 30: station ID
+
+WWVH:
+minute 29: station ID
+minute 48: hamsci test signal
+minute 59: station ID
