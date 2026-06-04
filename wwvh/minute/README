@@ -1,0 +1,43 @@
+This directory contains voice clips assembled to generate the time
+announcements starting at 45 (WWVH) or 52.5 (WWV) seconds past each
+minute, giving the time at the start of the next minute. For
+simplicity these files are in raw PCM format, converted from their
+original mp3 format. The file parameters are:
+
+bits/sample: 16
+channels: 1
+sample rate: 48 kHz
+encoding: signed-integer, linear PCM
+byte order: little endian
+
+The file names should be self-explanatory; Jane Barbe's voice for WWVH
+are in the h_ files, while John Doyle's voice for WWV are in the v_
+files. There is one file for each number from 0 through 59, plus these phrases:
+
+"at the tone"
+"minute"
+"minutes"
+"hour"
+"hours"
+"coordinated universal time"
+
+(A few other unused files from the original source are included, I
+might use them someday. I already had good off-air recordings of the
+station IDs so I don't use those here.)
+
+Because these are stitched together on the fly, the timings are
+hardwired in the wwvsim.c source file. Absolute offsets within the
+minute are used for the start of the "at the tone" segment, the start
+of the minute and hour numbers, and the phrase "coordinated universal
+time". The units phrases ("minute", etc) are currently concatenated
+directly onto the end of their corresponding numbers as this seems to
+better match the broadcast cadence, but this still needs a little fine tuning.
+
+If you are using wwvsim as a local reference signal for correlating
+with off-air reception, *do not* generate any local audio
+announcements as they are guaranteed not to line up in time and
+amplitude precisely enough. Disable all voice announcements with the
+--no-voice option to 'wwvsim'.
+
+Phil Karn, KA9Q
+June 2026
