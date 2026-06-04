@@ -73,9 +73,10 @@ bool Manual_time;
 
 // Tone schedules for each minute of the hour for each station
 // Special exception: no 440 Hz tone in first hour of UTC day; must be handled ad-hoc
+// minutes 9 and 16 updated by observation 4 June 2026 0600-0700UTC
 int const WWV_tone_schedule[60] = {
-    0,600,440,  0,  0,600,500,600,  0,  0, // 3 is nist reserved at wwvh, 4 reserved at wwv; 8 research signal; 9-10 storms; 7 undoc wwv
-    0,600,500,600,500,600,  0,600,  0,600, // 14-15 GPS (no longer used - tones), 16 nist reserved, 18 geoalerts; 11 undoc wwv
+    0,600,440,  0,  0,600,500,600,  0,600, // 3 is nist reserved at wwvh, 4 reserved at wwv; 8 research signal; 7 undoc wwv
+    0,600,500,600,500,600,500,600,  0,600, // 16 nist reserved, 18 geoalerts; 11 undoc wwv
   500,600,500,600,500,600,500,600,500,  0, // 29 is silent to protect wwvh id
     0,600,500,600,500,600,500,600,500,600, // 30 is station ID
   500,600,500,  0,  0,  0,  0,  0,  0,  0, // 43-51 is silent period to protect wwvh
