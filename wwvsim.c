@@ -501,8 +501,8 @@ void gen_tone_or_announcement(int16_t *output, int length, bool wwvh, int hour, 
   char *rawfilename = NULL;
   if(!NoVoice
      && asprintf(&rawfilename, "%s/announce/%d", wwvh ? "wwvh" : "wwv", minute) > 0
-     && announce_audio_file(output, length, rawfilename, 1000) != -1)
-    ;
+     && announce_audio_file(output, length, rawfilename, 1000) > 0)
+    ; // successful
   else if (!NoTone){
     // Otherwise generate a tone, unless silent
     double tone = wwvh ? WWVH_tone_schedule[minute] : WWV_tone_schedule[minute];
@@ -521,18 +521,22 @@ void gen_tone_or_announcement(int16_t *output, int length, bool wwvh, int hour, 
 int announce_audio_file(int16_t *output, int length, char const *file, int startms){
   if(startms < 0 || startms >= 61000)
     return -1;
+  // See if it's already in raw form in the share directory
   char rawname[PATH_MAX];
-  snprintf(rawname,sizeof rawname, "%s/%s.raw",CACHE_DIR,file);
-
+  snprintf(rawname,sizeof rawname, "%s/%s.raw",SHARE_DIR,file);
   FILE *fp = fopen(rawname, "r");
   if(fp == NULL){
-    // see if it's in the share directory
-    snprintf(rawname,sizeof rawname, "%s/%s.raw",SHARE_DIR,file);
+    // see if it's in the cache directory
+    snprintf(rawname,sizeof rawname, "%s/%s.raw",CACHE_DIR,file);
     fp = fopen(rawname, "r");
-    char sourcename[PATH_MAX];
-    snprintf(sourcename,sizeof sourcename, "%s/%s.mp3",SHARE_DIR, file);
-    struct stat statbuf;
-    if(fp == NULL && stat(sourcename,&statbuf) == 0){
+    if(fp == NULL){
+      // See if it's in .mp3 format in the share directory, if so, regenerate
+      char sourcename[PATH_MAX];
+      snprintf(sourcename,sizeof sourcename, "%s/%s.mp3",SHARE_DIR, file);
+      struct stat statbuf;
+      if(stat(sourcename,&statbuf) != 0)
+	return -1; // nope
+
       // Try to regenerate
       char *argv[] = {
 	"/usr/bin/sox",
@@ -546,24 +550,23 @@ int announce_audio_file(int16_t *output, int length, char const *file, int start
 	NULL
       };
       int pid = 0;
-    int status = 0;
-    posix_spawn(&pid, argv[0], NULL, NULL, argv, NULL);
-    waitpid(pid, &status, 0);
-    snprintf(rawname,sizeof rawname, "%s/%s.raw",CACHE_DIR,file);
-    fp = fopen(rawname, "r");
+      int status = 0;
+      posix_spawn(&pid, argv[0], NULL, NULL, argv, NULL);
+      waitpid(pid, &status, 0);
+      snprintf(rawname,sizeof rawname, "%s/%s.raw",CACHE_DIR,file);
+      fp = fopen(rawname, "r");
+      if(fp == NULL)
+	return -1;
     }
   }
-  if(fp != NULL){
-    size_t ret = fread(output+startms*Samprate_ms,
-		    sizeof *output,
-		    Samprate_ms*(1000*length-startms),
-		    fp);
-    if(ret == 0)
-      fprintf(stderr, "Can't read %s: %s\n", file, strerror(errno));
-    fclose(fp);
-    return ret;
-  }
-  return -1;
+  size_t ret = fread(output+startms*Samprate_ms,
+		     sizeof *output,
+		     Samprate_ms*(1000*length-startms),
+		     fp);
+  if(ret == 0)
+    fprintf(stderr, "Can't read %s: %s\n", file, strerror(errno));
+  fclose(fp);
+  return ret;
 }
 // Same as overlay_tone() except that the tone is added to whatever is already in the audio buffer
 // Take care to avoid overmodulation; the result will be clipped but could still sound bad
