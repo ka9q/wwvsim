@@ -43,7 +43,7 @@ clean:
 	rm -rf *.o wwvsim paths.h debian/tmp debian/.debhelper debian/wwvsim
 
 install: wwvsim
-	install -d -m 0755 $(DESTDIR)$(bindir) $(DESTDIR)$(docdir) $(DESTDIR)$(pkgdatadir)
+	install -d -m 0755 $(DESTDIR)$(bindir) $(DESTDIR)$(pkgdatadir)
 	install -d -m 02775 -g radio $(DESTDIR)$(cachedir) $(DESTDIR)$(cachedir)/wwv $(DESTDIR)$(cachedir)/wwvh
 	install -d -m 02775 -g radio $(DESTDIR)$(cachedir)/wwv/announce $(DESTDIR)$(cachedir)/wwv/minute
 	install -d -m 02775 -g radio $(DESTDIR)$(cachedir)/wwvh/announce $(DESTDIR)$(cachedir)/wwvh/minute
