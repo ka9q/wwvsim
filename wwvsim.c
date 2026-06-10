@@ -165,6 +165,8 @@ int main(int argc, char *argv[]){
     fprintf(stderr, "year %d dst start %d\n", y, dst_start_doy(y));
   }
 #endif
+  umask(0200); // make cached files group writeable
+
   int c;
   // Read and process command line arguments
   while((c = getopt_long(argc, argv, Optstring, Options, NULL)) != EOF){
