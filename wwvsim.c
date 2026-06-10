@@ -523,15 +523,17 @@ int announce_audio_file(int16_t *output, int length, char const *file, int start
     return -1;
   char rawname[PATH_MAX];
   snprintf(rawname,sizeof rawname, "%s/%s.raw",CACHE_DIR,file);
+
   FILE *fp = fopen(rawname, "r");
   if(fp == NULL){
     // see if it's in the share directory
     snprintf(rawname,sizeof rawname, "%s/%s.raw",SHARE_DIR,file);
     fp = fopen(rawname, "r");
-    if(fp == NULL){
+    char sourcename[PATH_MAX];
+    snprintf(sourcename,sizeof sourcename, "%s/%s.mp3",SHARE_DIR, file);
+    struct stat statbuf;
+    if(fp == NULL && stat(sourcename,&statbuf) == 0){
       // Try to regenerate
-      char sourcename[PATH_MAX];
-      snprintf(sourcename,sizeof sourcename, "%s/%s.mp3",SHARE_DIR, file);
       char *argv[] = {
 	"/usr/bin/sox",
 	sourcename,
