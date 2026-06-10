@@ -1,3 +1,9 @@
+wwvsim (2.1.0-0-trixie1) trixie; urgency=medium
+
+  * dynamically cache raw audio files from mp3 files
+
+ -- Phil Karn <karn@ka9q.net>  Tue, 09 Jun 2026 20:09:16 -0700
+
 wwvsim (2.0.2-0-trixie1) trixie; urgency=medium
 
   * update wwv tone schedule from observation - minutes 9 & 16 now tones
