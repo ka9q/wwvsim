@@ -499,12 +499,11 @@ void gen_tone_or_announcement(int16_t *output, int length, bool wwvh, int hour, 
   const double tone_amp = pow(10., -6.0/20.); // -6 dB
   // A raw audio file pre-empts everything else
   char *rawfilename = NULL;
-  char *textfilename = NULL;
-  if(!NoVoice && asprintf(&rawfilename, "%s/announce/%d", wwvh ? "wwvh" : "wwv", minute)
-     && access(rawfilename, R_OK) == 0){
-    announce_audio_file(output, length, rawfilename, 1000);
-    goto done;
-  } else if (!NoTone){
+  if(!NoVoice
+     && asprintf(&rawfilename, "%s/announce/%d", wwvh ? "wwvh" : "wwv", minute) > 0
+     && announce_audio_file(output, length, rawfilename, 1000) != -1)
+    ;
+  else if (!NoTone){
     // Otherwise generate a tone, unless silent
     double tone = wwvh ? WWVH_tone_schedule[minute] : WWV_tone_schedule[minute];
     // Special case: no 440 Hz tone during hour 0
@@ -513,9 +512,7 @@ void gen_tone_or_announcement(int16_t *output, int length, bool wwvh, int hour, 
     if(tone != 0)
       add_tone(output, 1000, 45000, tone, tone_amp); // Continuous tone from 1 sec until 45 sec
   }
- done:;
   free(rawfilename);
-  free(textfilename);
 }
 // Insert PCM audio file into audio output at specified offset
 // Note: length is in seconds, startms is in milliseconds
