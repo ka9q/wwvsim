@@ -43,6 +43,8 @@
 #include <pthread.h>
 #include <getopt.h>
 #include <errno.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #include "timecode.h"
 #include "paths.h"
 
@@ -430,7 +432,7 @@ void makeminute(int16_t *output, int length, bool wwvh, bool novoice, uint8_t co
       int len = 0;
       snprintf(vfile, sizeof vfile, "wwvh/minute/h_at_the_tone");
       announce_audio_file(output, length, vfile, start+500);
-      snprintf(vfile, sizeof vfile, "wwvh/minute/h_%d", WWVH_DIR, nexthour);
+      snprintf(vfile, sizeof vfile, "wwvh/minute/h_%d", nexthour);
       len = announce_audio_file(output, length, vfile, start+1500);
       snprintf(vfile, sizeof vfile, "wwvh/minute/%s", nexthour == 1 ? "h_hour" : "h_hours");
       announce_audio_file(output, length, vfile, start + 1500 + 1000 * len/Samprate);
@@ -438,7 +440,7 @@ void makeminute(int16_t *output, int length, bool wwvh, bool novoice, uint8_t co
       len = announce_audio_file(output, length, vfile, start + 3000);
       snprintf(vfile, sizeof vfile, "wwvh/minute/%s", nextminute == 1 ? "h_minute" : "h_minutes");
       announce_audio_file(output, length, vfile, start + 3000 + 1000 * len/Samprate);
-      snprintf(vfile, sizeof vfile, "wwvh/minute/%s", WWVH_DIR, "h_utc");
+      snprintf(vfile, sizeof vfile, "wwvh/minute/h_utc");
       announce_audio_file(output, length, vfile, start + 4750);
     } else {      // WWV
       int start = 52500;
@@ -449,11 +451,11 @@ void makeminute(int16_t *output, int length, bool wwvh, bool novoice, uint8_t co
       len = announce_audio_file(output, length, vfile, start + 650);
       snprintf(vfile, sizeof vfile, "wwv/minute/%s", nexthour == 1 ? "v_hour" : "v_hours");
       announce_audio_file(output, length, vfile, start + 650 + 1000 * len/Samprate);
-      snprintf(vfile, sizeof vfile, "wwv/minute/v_%d", WWV_DIR, nextminute);
+      snprintf(vfile, sizeof vfile, "wwv/minute/v_%d", nextminute);
       len = announce_audio_file(output, length, vfile, start + 2300);
       snprintf(vfile, sizeof vfile, "wwv/minute/%s", nextminute == 1 ? "v_minute" : "v_minutes");
       announce_audio_file(output, length, vfile, start + 2300 + 1000 * len/Samprate);
-      snprintf(vfile, sizeof vfile, "wwv/minute/%s", WWV_DIR, "v_utc");
+      snprintf(vfile, sizeof vfile, "wwv/minute/v_utc");
       announce_audio_file(output, length, vfile, start + 4000);
     }
   }
@@ -539,7 +541,8 @@ int announce_audio_file(int16_t *output, int length, char const *file, int start
       NULL
     };
     int pid = 0;
-    posix_spawn(&pid, argv[0], NULL, NULL, argv, environ);
+    int status = 0;
+    posix_spawn(&pid, argv[0], NULL, NULL, argv, NULL);
     waitpid(pid, &status, 0);
     fp = fopen(rawname, "r");
   }
