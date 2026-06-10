@@ -1,3 +1,9 @@
+wwvsim (2.1.0-2-trixie1) trixie; urgency=medium
+
+  * create radio group if it doesn't already exist
+
+ -- Phil Karn <karn@ka9q.net>  Tue, 09 Jun 2026 20:35:18 -0700
+
 wwvsim (2.1.0-1-trixie1) trixie; urgency=medium
 
   * fix tmpfiles types
