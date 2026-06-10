@@ -44,6 +44,7 @@ clean:
 
 install: wwvsim
 	install -d -m 0755 $(DESTDIR)$(bindir) $(DESTDIR)$(docdir) $(DESTDIR)$(pkgdatadir)
+	install -d -m 02775 $(DESTDIR)$(cachedir)
 	install -m 0644 NIST-250-67.pdf $(DESTDIR)$(docdir)
 	install -m 0755 wwvsim $(DESTDIR)$(bindir)
 	rsync -vaR wwv wwvh $(DESTDIR)$(pkgdatadir)
