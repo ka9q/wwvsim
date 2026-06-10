@@ -1,0 +1,4 @@
+c /var/cache/wwvsim 02775 radio radio -
+z /var/cache/wwvsim 02775 radio radio -
+c /usr/share/wwvsim 02755 radio radio -
+z /usr/share/wwvsim 02755 radio radio -

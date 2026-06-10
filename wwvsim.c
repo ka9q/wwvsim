@@ -428,32 +428,32 @@ void makeminute(int16_t *output, int length, bool wwvh, bool novoice, uint8_t co
       // Times need adjustment
       int start = 45000;
       int len = 0;
-      snprintf(vfile, sizeof vfile, "%s/minute/h_at_the_tone.raw", WWVH_DIR);
+      snprintf(vfile, sizeof vfile, "wwvh/minute/h_at_the_tone");
       announce_audio_file(output, length, vfile, start+500);
-      snprintf(vfile, sizeof vfile, "%s/minute/h_%d.raw", WWVH_DIR, nexthour);
+      snprintf(vfile, sizeof vfile, "wwvh/minute/h_%d", WWVH_DIR, nexthour);
       len = announce_audio_file(output, length, vfile, start+1500);
-      snprintf(vfile, sizeof vfile, "%s/minute/%s", WWVH_DIR, nexthour == 1 ? "h_hour.raw" : "h_hours.raw");
+      snprintf(vfile, sizeof vfile, "wwvh/minute/%s", nexthour == 1 ? "h_hour" : "h_hours");
       announce_audio_file(output, length, vfile, start + 1500 + 1000 * len/Samprate);
-      snprintf(vfile, sizeof vfile, "%s/minute/h_%d.raw", WWVH_DIR, nextminute);
+      snprintf(vfile, sizeof vfile, "wwvh/minute/h_%d", nextminute);
       len = announce_audio_file(output, length, vfile, start + 3000);
-      snprintf(vfile, sizeof vfile, "%s/minute/%s", WWVH_DIR, nextminute == 1 ? "h_minute.raw" : "h_minutes.raw");
+      snprintf(vfile, sizeof vfile, "wwvh/minute/%s", nextminute == 1 ? "h_minute" : "h_minutes");
       announce_audio_file(output, length, vfile, start + 3000 + 1000 * len/Samprate);
-      snprintf(vfile, sizeof vfile, "%s/minute/%s", WWVH_DIR, "h_utc.raw");
+      snprintf(vfile, sizeof vfile, "wwvh/minute/%s", WWVH_DIR, "h_utc");
       announce_audio_file(output, length, vfile, start + 4750);
     } else {      // WWV
       int start = 52500;
       int len = 0;
-      snprintf(vfile, sizeof vfile, "%s/minute/v_at_the_tone.raw", WWV_DIR);
+      snprintf(vfile, sizeof vfile, "wwv/minute/v_at_the_tone");
       announce_audio_file(output, length, vfile, start);
-      snprintf(vfile, sizeof vfile, "%s/minute/v_%d.raw",WWV_DIR,nexthour);
+      snprintf(vfile, sizeof vfile, "wwv/minute/v_%d",nexthour);
       len = announce_audio_file(output, length, vfile, start + 650);
-      snprintf(vfile, sizeof vfile, "%s/minute/%s", WWV_DIR, nexthour == 1 ? "v_hour.raw" : "v_hours.raw");
+      snprintf(vfile, sizeof vfile, "wwv/minute/%s", nexthour == 1 ? "v_hour" : "v_hours");
       announce_audio_file(output, length, vfile, start + 650 + 1000 * len/Samprate);
-      snprintf(vfile, sizeof vfile, "%s/minute/v_%d.raw", WWV_DIR, nextminute);
+      snprintf(vfile, sizeof vfile, "wwv/minute/v_%d", WWV_DIR, nextminute);
       len = announce_audio_file(output, length, vfile, start + 2300);
-      snprintf(vfile, sizeof vfile, "%s/minute/%s", WWV_DIR, nextminute == 1 ? "v_minute.raw" : "v_minutes.raw");
+      snprintf(vfile, sizeof vfile, "wwv/minute/%s", nextminute == 1 ? "v_minute" : "v_minutes");
       announce_audio_file(output, length, vfile, start + 2300 + 1000 * len/Samprate);
-      snprintf(vfile, sizeof vfile, "%s/minute/%s", WWV_DIR, "v_utc.raw");
+      snprintf(vfile, sizeof vfile, "wwv/minute/%s", WWV_DIR, "v_utc");
       announce_audio_file(output, length, vfile, start + 4000);
     }
   }
@@ -496,7 +496,7 @@ void gen_tone_or_announcement(int16_t *output, int length, bool wwvh, int hour, 
   // A raw audio file pre-empts everything else
   char *rawfilename = NULL;
   char *textfilename = NULL;
-  if(!NoVoice && asprintf(&rawfilename, "%s/announce/%d.raw", wwvh ? WWVH_DIR : WWV_DIR, minute)
+  if(!NoVoice && asprintf(&rawfilename, "%s/announce/%d", wwvh ? "wwvh" : "wwv", minute)
      && access(rawfilename, R_OK) == 0){
     announce_audio_file(output, length, rawfilename, 1000);
     goto done;
@@ -515,10 +515,34 @@ void gen_tone_or_announcement(int16_t *output, int length, bool wwvh, int hour, 
 }
 // Insert PCM audio file into audio output at specified offset
 // Note: length is in seconds, startms is in milliseconds
+// Takes relative file name of form "wwv/minute/foo", appends .raw, looks first in /var/cache/wwvsim
+// If not found, generates cached copy from .mp3 source in /usr/share/wwvsim
 int announce_audio_file(int16_t *output, int length, char const *file, int startms){
   if(startms < 0 || startms >= 61000)
     return -1;
-  FILE *fp = fopen(file, "r");
+  char rawname[PATH_MAX];
+  snprintf(rawname,sizeof rawname, "%s/%s.raw",CACHE_DIR,file);
+  FILE *fp = fopen(rawname, "r");
+  if(fp == NULL){
+    // Try to regenerate
+    char sourcename[PATH_MAX];
+    snprintf(sourcename,sizeof sourcename, "%s/%s.mp3",SHARE_DIR, file);
+    char *argv[] = {
+      "/usr/bin/sox",
+      sourcename,
+      "-t", "raw",
+      "-e", "signed-integer",
+      "-b", "16",
+      "-r", "48000",
+      "-c", "1",
+      rawname,
+      NULL
+    };
+    int pid = 0;
+    posix_spawn(&pid, argv[0], NULL, NULL, argv, environ);
+    waitpid(pid, &status, 0);
+    fp = fopen(rawname, "r");
+  }
   if(fp != NULL){
     size_t ret = fread(output+startms*Samprate_ms,
 		    sizeof *output,
