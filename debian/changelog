@@ -1,3 +1,9 @@
+wwvsim (2.1.0-3-trixie1) trixie; urgency=medium
+
+  * try to get /var/cache/wwvsim directories set up properly
+
+ -- Phil Karn <karn@ka9q.net>  Tue, 09 Jun 2026 21:16:03 -0700
+
 wwvsim (2.1.0-2-trixie1) trixie; urgency=medium
 
   * create radio group if it doesn't already exist
