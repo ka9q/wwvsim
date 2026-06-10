@@ -48,7 +48,7 @@ install: wwvsim
 	install -d -m 02775 -g radio $(DESTDIR)$(cachedir)/wwv/announce $(DESTDIR)$(cachedir)/wwv/minute
 	install -d -m 02775 -g radio $(DESTDIR)$(cachedir)/wwvh/announce $(DESTDIR)$(cachedir)/wwvh/minute
 	install -m 02755 -g radio wwvsim $(DESTDIR)$(bindir)
-	rsync -vaR wwv wwvh $(DESTDIR)$(pkgdatadir)
+	rsync -vaRH wwv wwvh $(DESTDIR)$(pkgdatadir)
 
 wwvsim: wwvsim.o timecode.o
 	$(CC) -o $@ $^ $(LDFLAGS) $(LDLIBS)
