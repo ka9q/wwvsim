@@ -40,7 +40,7 @@ CFLAGS=$(DOPTS) $(CPPFLAGS)
 all:	wwvsim
 
 clean:
-	rm -rf *.o wwvsim paths.h debian/tmp
+	rm -rf *.o wwvsim paths.h debian/tmp debian/.debhelper debian/wwvsim
 
 install: wwvsim
 	install -d -m 0755 $(DESTDIR)$(bindir) $(DESTDIR)$(docdir) $(DESTDIR)$(pkgdatadir)
