@@ -3,7 +3,6 @@ Rules-Requires-Root: binary-targets
 Section: hamradio
 Priority: optional
 Maintainer: Phil Karn <karn@ka9q.net>
-Rules-Requires-Root: no
 Build-Depends: debhelper-compat (= 13), libbsd-dev, portaudio19-dev
 Standards-Version: 4.7.2
 Homepage: <insert the upstream URL, if relevant>
