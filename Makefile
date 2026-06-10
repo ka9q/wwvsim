@@ -40,14 +40,14 @@ CFLAGS=$(DOPTS) $(CPPFLAGS)
 all:	wwvsim
 
 clean:
-	rm -f *.o wwvsim paths.h
+	rm -f *.o wwvsim paths.h debian/tmp
 
 install: wwvsim
 	install -d -m 0755 $(DESTDIR)$(bindir) $(DESTDIR)$(docdir) $(DESTDIR)$(pkgdatadir)
 	install -d -m 02775 -g radio $(DESTDIR)$(cachedir) $(DESTDIR)$(cachedir)/wwv $(DESTDIR)$(cachedir)/wwvh
 	install -d -m 02775 -g radio $(DESTDIR)$(cachedir)/wwv/announce $(DESTDIR)$(cachedir)/wwv/minute
 	install -d -m 02775 -g radio $(DESTDIR)$(cachedir)/wwvh/announce $(DESTDIR)$(cachedir)/wwvh/minute
-	install -m 0644 NIST-250-67.pdf $(DESTDIR)$(docdir)
+g	install -m 0644 NIST-250-67.pdf $(DESTDIR)$(docdir)
 	install -m 02755 -g radio wwvsim $(DESTDIR)$(bindir)
 	rsync -vaR wwv wwvh $(DESTDIR)$(pkgdatadir)
 
