@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+    if ! getent group radio >/dev/null; then
+        addgroup --system radio
+    fi
+
+    if ! dpkg-statoverride --list /usr/bin/wwvsim >/dev/null 2>&1; then
+        dpkg-statoverride --update --add root radio 2755 /usr/bin/wwvsim
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0

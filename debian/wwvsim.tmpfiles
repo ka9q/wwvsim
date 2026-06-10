@@ -1,8 +1,8 @@
-d /var/cache/wwvsim 02775 radio radio -
-d /var/cache/wwvsim/wwv 02775 radio radio -
-d /var/cache/wwvsim/wwvh 02775 radio radio -
-d /var/cache/wwvsim/wwv/announce 02775 radio radio -
-d /var/cache/wwvsim/wwv/minute 02775 radio radio -
-d /var/cache/wwvsim/wwvh/announce 02775 radio radio -
-d /var/cache/wwvsim/wwvh/minute 02775 radio radio -
-d /usr/share/wwvsim 02755 radio radio -
+d /var/cache/wwvsim 02775 root radio -
+d /var/cache/wwvsim/wwv 02775 root radio -
+d /var/cache/wwvsim/wwvh 02775 root radio -
+d /var/cache/wwvsim/wwv/announce 02775 root radio -
+d /var/cache/wwvsim/wwv/minute 02775 root radio -
+d /var/cache/wwvsim/wwvh/announce 02775 root radio -
+d /var/cache/wwvsim/wwvh/minute 02775 root radio -
+d /usr/share/wwvsim 02755 root radio -

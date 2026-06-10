@@ -1,4 +1,5 @@
 Source: wwvsim
+Rules-Requires-Root: binary-targets
 Section: hamradio
 Priority: optional
 Maintainer: Phil Karn <karn@ka9q.net>
@@ -11,8 +12,7 @@ Vcs-Git: https://github.com/ka9q/wwvsim
 
 Package: wwvsim
 Architecture: any
-Depends:
- ${misc:Depends}, ${shlibs:Depends}, sox, libsox-fmt-mp3
+Depends: ${misc:Depends}, ${shlibs:Depends}, sox, libsox-fmt-mp3, adduser
 Description: WWV/WWVH emulator
  Generates complete WWV or WWVH audio program: audio tones, second ticks, UT1 offset, minute beeps, 100 Hz timecode,
  half-hourly announcements, minute announcements

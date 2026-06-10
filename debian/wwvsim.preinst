@@ -1,8 +1,14 @@
 #!/bin/sh
+set -e
+
 case "$1" in
-  configure)
-    adduser --system --group radio || true
-    ;;
+    install|upgrade)
+        if ! getent group radio >/dev/null; then
+            addgroup --system radio
+        fi
+        ;;
 esac
 
 #DEBHELPER#
+
+exit 0
