@@ -528,25 +528,31 @@ int announce_audio_file(int16_t *output, int length, char const *file, int start
   snprintf(rawname,sizeof rawname, "%s/%s.raw",CACHE_DIR,file);
   FILE *fp = fopen(rawname, "r");
   if(fp == NULL){
-    // Try to regenerate
-    char sourcename[PATH_MAX];
-    snprintf(sourcename,sizeof sourcename, "%s/%s.mp3",SHARE_DIR, file);
-    char *argv[] = {
-      "/usr/bin/sox",
-      sourcename,
-      "-t", "raw",
-      "-e", "signed-integer",
-      "-b", "16",
-      "-r", "48000",
-      "-c", "1",
-      rawname,
-      NULL
-    };
-    int pid = 0;
+    // see if it's in the share directory
+    snprintf(rawname,sizeof rawname, "%s/%s.raw",SHARE_DIR,file);
+    fp = fopen(rawname, "r");
+    if(fp == NULL){
+      // Try to regenerate
+      char sourcename[PATH_MAX];
+      snprintf(sourcename,sizeof sourcename, "%s/%s.mp3",SHARE_DIR, file);
+      char *argv[] = {
+	"/usr/bin/sox",
+	sourcename,
+	"-t", "raw",
+	"-e", "signed-integer",
+	"-b", "16",
+	"-r", "48000",
+	"-c", "1",
+	rawname,
+	NULL
+      };
+      int pid = 0;
     int status = 0;
     posix_spawn(&pid, argv[0], NULL, NULL, argv, NULL);
     waitpid(pid, &status, 0);
+    snprintf(rawname,sizeof rawname, "%s/%s.raw",CACHE_DIR,file);
     fp = fopen(rawname, "r");
+    }
   }
   if(fp != NULL){
     size_t ret = fread(output+startms*Samprate_ms,
