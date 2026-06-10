@@ -41,9 +41,6 @@ all:	wwvsim
 
 clean:
 	rm -f *.o wwvsim paths.h
-	for d in $(SUBDIRS); do \
-		$(MAKE) -C $$d clean DESTDIR=$(DESTDIR) || exit $$?; \
-	done
 
 install: wwvsim
 	install -d -m 0755 $(DESTDIR)$(bindir) $(DESTDIR)$(docdir) $(DESTDIR)$(pkgdatadir)
