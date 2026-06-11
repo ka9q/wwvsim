@@ -102,9 +102,11 @@ struct qentry {
 };
 
 struct qentry *Queue;
+#ifdef USE_PORTAUDIO
 pthread_t Output_thread;
 pthread_mutex_t Output_mutex; // Protect queue
 pthread_cond_t Output_cond;
+#endif
 int Samprate_ms;      // Samples per millisecond - sampling rates not divisible by 1000 may break
 
 static char const Optstring[] = "HY:M:D:h:m:s:u:r:LNvn:Pdtc1";
@@ -294,8 +296,11 @@ int main(int argc, char *argv[]){
   }
   Samprate_ms = Samprate/1000; // Samples per ms
   bool startup = true;
-  // Set up output thread to write asynchronously
-  pthread_create(&Output_thread, NULL, output_thread, NULL);
+  // Set up output thread to write asynchronously only when using portaudio
+#ifdef USE_PORTAUDIO
+  if(Stream)
+    pthread_create(&Output_thread, NULL, output_thread, NULL);
+#endif
   while(true){
     int length = 60;    // Default length 60 seconds
     if((month == 6 || month == 12) && hour == 23 && minute == 59){
@@ -346,28 +351,39 @@ int main(int argc, char *argv[]){
       }
     }
     // Append to queue, wake output
-    pthread_mutex_lock(&Output_mutex);
-    struct qentry *last = NULL;
-    for(struct qentry *q = Queue;q != NULL;last = q, q = q->next)
-      ;
-    if(last)
-      last->next = qe;
-    else
-      Queue = qe; // First on empty queue
-    pthread_cond_signal(&Output_cond);
-    pthread_mutex_unlock(&Output_mutex);
-    if (One_minute_mode && Manual_time){
-      // manual time mode and only output one minute, so wait for the output thread to exit
-      if (pthread_join(Output_thread, NULL) != 0) {
-        perror("pthread_join() failed");
-        return 1;
+#ifdef USE_PORTAUDIO
+    if(Stream){
+      pthread_mutex_lock(&Output_mutex);
+      struct qentry *last = NULL;
+      for(struct qentry *q = Queue;q != NULL;last = q, q = q->next)
+	;
+      if(last)
+	last->next = qe;
+      else
+	Queue = qe; // First on empty queue
+      pthread_cond_signal(&Output_cond);
+      pthread_mutex_unlock(&Output_mutex);
+      if (One_minute_mode && Manual_time){
+	// manual time mode and only output one minute, so wait for the output thread to exit
+	if (pthread_join(Output_thread, NULL) != 0) {
+	  perror("pthread_join() failed");
+	  return 1;
+	}
+	return 0;
       }
-      return 0;
-    }
-    // Wait for queue to drain a little
-    while(qlen() >= 2){
-      useconds_t interval = 30000000; // Pause 30 sec
-      usleep(interval);
+      // Wait for queue to drain a little
+      while(qlen() >= 2){
+	useconds_t interval = 30000000; // Pause 30 sec
+	usleep(interval);
+      }
+    } else
+#endif
+      {
+      // Just write straight to stdout
+      fwrite(qe->buffer + qe->offset,sizeof *qe->buffer, qe->length - qe->offset, stdout);
+      free(qe->buffer);
+      free(qe);
+      qe = NULL;
     }
   next_minute:;
     if(length == 61){
@@ -616,6 +632,7 @@ int overlay_silence(int16_t *output, int startms, int stopms){
   memset(output, 0, samples * sizeof *output);
   return 0;
 }
+#ifdef USE_PORTAUDIO
 // Read from buffer, send to standard output
 // In separate thread to run parallel with next buffer generation (similar to port audio for direct output)
 void *output_thread(void *p){
@@ -633,7 +650,6 @@ void *output_thread(void *p){
     qe->next = NULL;
     pthread_mutex_unlock(&Output_mutex);
 
-#if USE_PORTAUDIO
     if(!started && Stream){
       int err = Pa_StartStream(Stream);
       if(err != paNoError){
@@ -647,24 +663,11 @@ void *output_thread(void *p){
       if(err != paNoError){
 	fprintf(stderr, "Portaudio error: %s\n", Pa_GetErrorText(err));
       }
-    } else {
-      fwrite(qe->buffer + qe->offset, sizeof(int16_t), qe->length - qe->offset, stdout);
-      if (One_minute_mode && Manual_time)
-        pthread_exit(NULL);
     }
-#else
-    fwrite(qe->buffer + qe->offset, sizeof(int16_t), qe->length - qe->offset, stdout);
-    fflush(stdout);
-#endif
     free(qe->buffer);
     free(qe);
   }
   return NULL;
-}
-void cleanup(void){
-#if USE_PORTAUDIO
-  Pa_Terminate();
-#endif
 }
 // Return length of output queue
 static int qlen(void){
@@ -675,3 +678,9 @@ static int qlen(void){
   pthread_mutex_unlock(&Output_mutex);
   return len;
 }
+void cleanup(void){
+  Pa_Terminate();
+}
+#else
+void cleanup(void){}
+#endif
