@@ -378,12 +378,14 @@ int main(int argc, char *argv[]){
       }
     } else
 #endif
-      {
+    {
       // Just write straight to stdout
-      fwrite(qe->buffer + qe->offset,sizeof *qe->buffer, qe->length - qe->offset, stdout);
+      int cnt = fwrite(qe->buffer + qe->offset,sizeof *qe->buffer, qe->length - qe->offset, stdout);
       free(qe->buffer);
       free(qe);
       qe = NULL;
+      if(cnt < qe->length - qe->offset)
+	break; // write error
     }
   next_minute:;
     if(length == 61){
