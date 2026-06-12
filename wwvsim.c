@@ -252,6 +252,8 @@ int main(int argc, char *argv[]){
       exit(1);
     }
   }
+  signal(SIGPIPE, SIG_DFL); // ensure exit if reader goes away
+
   if(isatty(fileno(stdout))){
 #ifdef USE_PORTAUDIO
     // No output redirection, so use portaudio to write directly to audio hardware with "precise" (?) timing
