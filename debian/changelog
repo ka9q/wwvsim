@@ -1,3 +1,9 @@
+wwvsim (2026.06.12-1-trixie1) trixie; urgency=medium
+
+  * write stdout directly, exit on error
+
+ -- Phil Karn <karn@ka9q.net>  Fri, 12 Jun 2026 03:43:40 -0700
+
 wwvsim (2.1.0-3-trixie1) trixie; urgency=medium
 
   * try to get /var/cache/wwvsim directories set up properly
