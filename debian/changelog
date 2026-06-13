@@ -1,3 +1,9 @@
+wwvsim (2026.06.12-2-trixie1) trixie; urgency=medium
+
+  * ensure exit on SIGPIPE
+
+ -- Phil Karn <karn@ka9q.net>  Fri, 12 Jun 2026 04:15:34 -0700
+
 wwvsim (2026.06.12-1-trixie1) trixie; urgency=medium
 
   * write stdout directly, exit on error
