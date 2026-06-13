@@ -384,10 +384,12 @@ int main(int argc, char *argv[]){
       // Just write straight to stdout
       int cnt = fwrite(qe->buffer + qe->offset,sizeof *qe->buffer, qe->length - qe->offset, stdout);
       free(qe->buffer);
+      if(cnt < qe->length - qe->offset){
+	free(qe);
+	break; // write error
+      }
       free(qe);
       qe = NULL;
-      if(cnt < qe->length - qe->offset)
-	break; // write error
     }
   next_minute:;
     if(length == 61){

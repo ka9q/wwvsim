@@ -35,7 +35,7 @@ SUBDIRS=wwv/minute wwvh/minute
 
 CFLAGS=$(DOPTS) $(CPPFLAGS)
 
-.PHONY: all clean install
+.PHONY: all clean install uninstall
 
 all:	wwvsim
 
@@ -49,6 +49,13 @@ install: wwvsim
 	install -d -m 02775 -g radio $(DESTDIR)$(cachedir)/wwvh/announce $(DESTDIR)$(cachedir)/wwvh/minute
 	install -m 02755 -g radio wwvsim $(DESTDIR)$(bindir)
 	rsync -vaRH wwv wwvh $(DESTDIR)$(pkgdatadir)
+
+uninstall:
+	rm -rf $(DESTDIR)$(pkgdatadir)/wwv $(DESTDIR)$(pkgdatadir)/wwvh
+	-rmdir $(DESTDIR)$(pkgdatadir)
+	rm -f $(DESTDIR)$(bindir)/wwvsim
+	rm -rf $(DESTDIR)$(cachedir)/wwv $(DESTDIR)$(cachedir)/wwvh
+	-rmdir $(DESTDIR)$(cachedir)
 
 wwvsim: wwvsim.o timecode.o
 	$(CC) -o $@ $^ $(LDFLAGS) $(LDLIBS)
