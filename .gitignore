@@ -3,3 +3,4 @@
 *.o
 wwvsim
 paths.h
+debian/*.debhelper
