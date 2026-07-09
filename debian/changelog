@@ -1,3 +1,9 @@
+wwvsim (2026.07.09-1-trixie1) trixie; urgency=medium
+
+  * rebuild, previous version was segfaulting
+
+ -- Phil Karn <karn@ka9q.net>  Wed, 08 Jul 2026 18:27:20 -0700
+
 wwvsim (2026.06.12-2-trixie1) trixie; urgency=medium
 
   * ensure exit on SIGPIPE
